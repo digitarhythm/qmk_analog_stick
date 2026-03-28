@@ -1,16 +1,16 @@
 // Copyright 2024 Hajime Oh-yake (@digitarhythm)
 // SPDX-License-Identifier: MIT
 //
-// JS16 TMR Joystick Library for QMK
-// K-SILVER JS16 TMR ジョイスティックをマウスカーソル操作に使用するライブラリ
+// QMK Analog Stick Library
+// アナログジョイスティックをマウスカーソル操作に使用するライブラリ
 //
 // 使い方:
 //   1. config.h で必須パラメータ（JOYSTICK_X_PIN, JOYSTICK_Y_PIN）を定義
 //   2. config.h で任意のパラメータを上書き定義（デフォルト値あり）
-//   3. keymap.c で #include "js16_joystick.h" する
-//   4. keyboard_post_init_user() 内で js16_init() を呼ぶ
-//   5. pointing_device_task_user() 内で js16_update() を呼ぶ
-//   6. rules.mk に SRC += js16_joystick.c を追加
+//   3. keymap.c で #include "qmk_analog_stick.h" する
+//   4. keyboard_post_init_user() 内で analog_stick_init() を呼ぶ
+//   5. pointing_device_task_user() 内で analog_stick_update() を呼ぶ
+//   6. rules.mk に SRC += qmk_analog_stick.c を追加
 //   7. rules.mk に POINTING_DEVICE_ENABLE = yes / POINTING_DEVICE_DRIVER = custom を追加
 //   8. halconf.h に HAL_USE_ADC TRUE を定義
 //   9. mcuconf.h に RP_ADC_USE_ADC1 TRUE を定義
@@ -79,8 +79,8 @@
 
 // 初期化（keyboard_post_init_user 内で呼ぶ）
 // ウォームアップ待機 → キャリブレーション を実行
-void js16_init(void);
+void analog_stick_init(void);
 
 // マウスレポート更新（pointing_device_task_user 内で呼ぶ）
 // スムージング、デッドゾーン、加速カーブ、サブピクセル処理を適用
-report_mouse_t js16_update(report_mouse_t mouse_report);
+report_mouse_t analog_stick_update(report_mouse_t mouse_report);

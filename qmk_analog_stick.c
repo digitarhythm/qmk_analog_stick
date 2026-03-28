@@ -1,9 +1,9 @@
 // Copyright 2024 Hajime Oh-yake (@digitarhythm)
 // SPDX-License-Identifier: MIT
 //
-// JS16 TMR Joystick Library for QMK
+// QMK Analog Stick Library
 
-#include "js16_joystick.h"
+#include "qmk_analog_stick.h"
 #include "print.h"
 
 #ifndef constrain
@@ -67,7 +67,7 @@ static uint32_t isqrt(uint32_t n) {
     return x;
 }
 
-void js16_init(void) {
+void analog_stick_init(void) {
     // TMRセンサーが安定するまで待機
     wait_ms(JOYSTICK_WARMUP_MS);
 
@@ -94,11 +94,11 @@ void js16_init(void) {
 #endif
 
 #if JOYSTICK_DEBUG
-    uprintf("JS16 center: X=%u Y=%u\n", center_x, center_y);
+    uprintf("AnalogStick center: X=%u Y=%u\n", center_x, center_y);
 #endif
 }
 
-report_mouse_t js16_update(report_mouse_t mouse_report) {
+report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
     uint16_t smooth_x = read_smoothed(JOYSTICK_X_PIN, buf_x);
     uint16_t smooth_y = read_smoothed(JOYSTICK_Y_PIN, buf_y);
     buf_idx = (buf_idx + 1) % JOYSTICK_SMOOTHING;

@@ -1,6 +1,6 @@
-# JS16 TMR Joystick Library for QMK
+# QMK Analog Stick Library
 
-K-SILVER JS16 TMR (Tunnel Magnetoresistance) ジョイスティックを QMK/Vial ファームウェアでマウスカーソル操作に使用するためのライブラリです。
+アナログジョイスティックを QMK/Vial ファームウェアでマウスカーソル操作に使用するためのライブラリです。K-SILVER JS16 (TMR) / JH16 (Hall Effect) 等のアナログ出力ジョイスティックに対応しています。
 
 ## Features
 
@@ -24,8 +24,8 @@ K-SILVER JS16 TMR (Tunnel Magnetoresistance) ジョイスティックを QMK/Via
 
 | File | Description |
 |---|---|
-| `js16_joystick.h` | ヘッダファイル (デフォルトパラメータ定義 + API 宣言) |
-| `js16_joystick.c` | 実装ファイル |
+| `qmk_analog_stick.h` | ヘッダファイル (デフォルトパラメータ定義 + API 宣言) |
+| `qmk_analog_stick.c` | 実装ファイル |
 | `halconf.h` | ChibiOS HAL 設定 (ADC 有効化) |
 | `mcuconf.h` | ChibiOS MCU 設定 (RP2040 ADC ドライバ有効化) |
 
@@ -33,12 +33,12 @@ K-SILVER JS16 TMR (Tunnel Magnetoresistance) ジョイスティックを QMK/Via
 
 ### 1. ファイルの配置
 
-`js16_joystick.h`、`js16_joystick.c`、`halconf.h`、`mcuconf.h` をキーボードディレクトリにコピーします。既に `halconf.h` や `mcuconf.h` が存在する場合は、手順 2・3 の内容を既存ファイルに追記してください。
+`qmk_analog_stick.h`、`qmk_analog_stick.c`、`halconf.h`、`mcuconf.h` をキーボードディレクトリにコピーします。既に `halconf.h` や `mcuconf.h` が存在する場合は、手順 2・3 の内容を既存ファイルに追記してください。
 
 ```
 keyboards/your_keyboard/
-  ├── js16_joystick.h
-  ├── js16_joystick.c
+  ├── qmk_analog_stick.h
+  ├── qmk_analog_stick.c
   ├── halconf.h
   ├── mcuconf.h
   └── keymaps/default/
@@ -84,16 +84,16 @@ keyboards/your_keyboard/
 
 ```c
 #include QMK_KEYBOARD_H
-#include "js16_joystick.h"
+#include "qmk_analog_stick.h"
 
 // ... キーマップ定義 ...
 
 void keyboard_post_init_user(void) {
-    js16_init();
+    analog_stick_init();
 }
 
 report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
-    return js16_update(mouse_report);
+    return analog_stick_update(mouse_report);
 }
 ```
 
@@ -102,12 +102,12 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 ```makefile
 POINTING_DEVICE_ENABLE = yes
 POINTING_DEVICE_DRIVER = custom
-SRC += analog.c js16_joystick.c
+SRC += analog.c qmk_analog_stick.c
 ```
 
 ## API Reference
 
-### `void js16_init(void)`
+### `void analog_stick_init(void)`
 
 ジョイスティックを初期化します。`keyboard_post_init_user()` 内で呼び出してください。
 
@@ -123,7 +123,7 @@ SRC += analog.c js16_joystick.c
 
 ---
 
-### `report_mouse_t js16_update(report_mouse_t mouse_report)`
+### `report_mouse_t analog_stick_update(report_mouse_t mouse_report)`
 
 毎スキャンサイクルでマウスレポートを更新します。`pointing_device_task_user()` 内で呼び出してください。
 
@@ -261,13 +261,13 @@ speed_y = current_speed × norm_y / magnitude
 
 **配線:**
 
-JS16 の SW ピンは押下時に内部 GND に接続される（アクティブ LOW）ため、GPIO に直接接続するだけで動作します。外部プルアップ抵抗は不要です（MCU 内部プルアップを使用）。
+ジョイスティックの SW ピンは押下時に内部 GND に接続される（アクティブ LOW）ため、GPIO に直接接続するだけで動作します。外部プルアップ抵抗は不要です（MCU 内部プルアップを使用）。
 
 ```
-JS16 SW -----> GPIOピン（内部プルアップ有効）
+Joystick SW -----> GPIOピン（内部プルアップ有効）
 ```
 
-> **注意:** JS16 の SW ピンはキーマトリクスには直接接続できません。SW は押下時に内部 GND に短絡する 1 ピン出力のため、マトリクスの ROW-COL 間接続として機能しません。GPIO 直結で使用してください。
+> **注意:** ジョイスティックの SW ピンはキーマトリクスには直接接続できません。SW は押下時に内部 GND に短絡する 1 ピン出力のため、マトリクスの ROW-COL 間接続として機能しません。GPIO 直結で使用してください。
 
 ### Speed / Acceleration Parameters
 
@@ -386,7 +386,14 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 
 ## Hardware Notes
 
-### K-SILVER JS16 TMR Joystick
+### 対応ジョイスティック
+
+本ライブラリは ADC でアナログ電圧を読み取る方式のジョイスティックに広く対応しています。動作確認済みのモデル:
+
+- **K-SILVER JS16** (TMR 方式)
+- **K-SILVER JH16** (Hall Effect 方式)
+
+### K-SILVER JS16 / JH16
 
 - **センシング方式**: TMR (トンネル磁気抵抗効果)
 - **動作電圧**: 1.8V 〜 3.3V
@@ -410,8 +417,8 @@ RP2040 で ADC として使用可能なピンは以下の 4 つです:
 ### 配線例
 
 ```
-JS16          RP2040-Zero
-----          -----------
+Joystick      RP2040-Zero
+----------    -----------
 VCC    ----->  3.3V
 GND    ----->  GND
 X out  ----->  GP28  (ADC ピン)
@@ -421,11 +428,11 @@ SW     ----->  GP13  (任意の GPIO、オプション)
 
 ### EC12 エンコーダーフットプリント流用時の配線
 
-JS16 は EC12/EC11 ロータリーエンコーダーのフットプリントに実装できますが、ピンの役割が異なるため配線に注意が必要です。
+K-SILVER JS16/JH16 は EC12/EC11 ロータリーエンコーダーのフットプリントに実装できますが、ピンの役割が異なるため配線に注意が必要です。
 
 ```
-EC12 ピン      JS16 ピン      接続先
----------      ---------      ------
+EC12 ピン      Joystick ピン  接続先
+---------      ------------   ------
 Encoder A  --> X output   --> ADC ピン (GP28 等)
 Encoder GND -> GND        --> GND
 Encoder B  --> Y output   --> ADC ピン (GP29 等)
@@ -433,7 +440,7 @@ Switch 1   --> VCC        --> 3.3V 電源ライン (※)
 Switch 2   --> SW         --> GPIO ピン (※)
 ```
 
-> **(※) 注意:** EC12 のスイッチピンは通常キーマトリクスの ROW/COL に接続されています。JS16 の VCC は常時 3.3V 給電が必要なため、Switch 1 のパッドが 3.3V 電源ラインに接続されていることを確認してください。Switch 2 (SW) はマトリクスではなく GPIO に直結する必要があります。
+> **(※) 注意:** EC12 のスイッチピンは通常キーマトリクスの ROW/COL に接続されています。ジョイスティックの VCC は常時 3.3V 給電が必要なため、Switch 1 のパッドが 3.3V 電源ラインに接続されていることを確認してください。Switch 2 (SW) はマトリクスではなく GPIO に直結する必要があります。
 
 ## Troubleshooting
 

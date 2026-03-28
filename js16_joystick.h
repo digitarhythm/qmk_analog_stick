@@ -50,31 +50,19 @@
 
 // 速度設定（x1000スケール: 1000 = 1.0ピクセル/サイクル）
 #ifndef JOYSTICK_MAX_SPEED
-#define JOYSTICK_MAX_SPEED  8000   // 全倒し時の最大速度（8.0）
-#endif
-#ifndef JOYSTICK_NORM_SPEED
-#define JOYSTICK_NORM_SPEED 2000   // 通常範囲の最大速度（2.0）
-#endif
-#ifndef JOYSTICK_MID_SPEED
-#define JOYSTICK_MID_SPEED   100   // THRESHOLD%傾斜時の速度（0.1）
+#define JOYSTICK_MAX_SPEED  8000   // 最大速度（8.0）
 #endif
 
-// 全倒し判定（raw値がこの範囲外で全倒し）
-#ifndef JOYSTICK_FULL_LOW
-#define JOYSTICK_FULL_LOW    30
-#endif
-#ifndef JOYSTICK_FULL_HIGH
-#define JOYSTICK_FULL_HIGH  990
+// 加速度設定
+// 傾き量の二乗 × この値が毎サイクルの加速度になる
+// 大きいほど速く加速する
+#ifndef JOYSTICK_ACCEL_RATE
+#define JOYSTICK_ACCEL_RATE   16   // 全倒しで約5秒でMAX_SPEEDに到達
 #endif
 
 // 移動平均サンプル数
 #ifndef JOYSTICK_SMOOTHING
 #define JOYSTICK_SMOOTHING    4
-#endif
-
-// 時間加速設定
-#ifndef JOYSTICK_ACCEL_TIME
-#define JOYSTICK_ACCEL_TIME 30000   // MAX_SPEEDに達するまでの時間(ms)
 #endif
 
 // TMRセンサー安定待ち時間

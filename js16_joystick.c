@@ -10,7 +10,7 @@
 #define constrain(amt, low, high) ((amt) < (low) ? (low) : ((amt) > (high) ? (high) : (amt)))
 #endif
 
-#define JOYSTICK_ACCEL_MAX_COUNT (JOYSTICK_ACCEL_TIME / 10)
+// (JOYSTICK_ACCEL_RATE: 傾き量に応じた加速度の係数)
 
 static uint16_t center_x = 512;
 static uint16_t center_y = 512;
@@ -24,9 +24,9 @@ static uint8_t  buf_idx = 0;
 static int32_t subpx_x = 0;
 static int32_t subpx_y = 0;
 
-// 時間加速カウンタ
-static uint16_t hold_counter = 0;       // 通常加速用
-static uint16_t full_tilt_counter = 0;  // 全倒し加速用
+// 加速用
+static int32_t current_speed = 0;    // 現在の速度（x1000スケール）
+static int32_t accel_accum = 0;      // 加速度の端数蓄積
 
 // デバッグタイマー
 static uint16_t debug_timer = 0;
@@ -40,29 +40,19 @@ static uint16_t read_smoothed(pin_t pin, uint16_t *buf) {
     return sum / JOYSTICK_SMOOTHING;
 }
 
-// 軸ごとの正規化（-1000〜+1000 にスケーリング）
+// 軸ごとの正規化（-1000〜+1000 にスケーリング、デッドゾーンなし）
 static int16_t normalize_axis(uint16_t val, uint16_t center) {
     int16_t delta = (int16_t)val - (int16_t)center;
-
-    if (abs(delta) < JOYSTICK_DEADZONE) return 0;
-
-    // デッドゾーン分を差し引く
-    int16_t normalized = (delta > 0) ? (delta - JOYSTICK_DEADZONE) : (delta + JOYSTICK_DEADZONE);
+    if (delta == 0) return 0;
 
     // 方向ごとに実際の範囲で -1000〜+1000 にスケーリング
     int16_t range = (delta > 0)
-        ? (JOYSTICK_ADC_MAX - center - JOYSTICK_DEADZONE)
-        : (center - JOYSTICK_ADC_MIN - JOYSTICK_DEADZONE);
+        ? (JOYSTICK_ADC_MAX - center)
+        : (center - JOYSTICK_ADC_MIN);
     if (range < 1) range = 1;
 
-    int32_t scaled = (int32_t)normalized * 1000 / range;
+    int32_t scaled = (int32_t)delta * 1000 / range;
     return (int16_t)constrain(scaled, -1000, 1000);
-}
-
-// 速度カーブ（0〜1000 の傾斜率 → x1000スケールの速度）
-// 二乗カーブ: 傾け始めは超低速、大きく倒すほど加速
-static int32_t apply_speed_curve(int32_t ratio) {
-    return ratio * ratio * JOYSTICK_MID_SPEED / (1000 * 1000);
 }
 
 // 簡易整数平方根（ニュートン法）
@@ -117,54 +107,38 @@ report_mouse_t js16_update(report_mouse_t mouse_report) {
     int16_t norm_x = normalize_axis(smooth_x, center_x);
     int16_t norm_y = normalize_axis(smooth_y, center_y);
 
-    if (norm_x != 0 || norm_y != 0) {
-        // 通常加速カウンタ
-        if (hold_counter < JOYSTICK_ACCEL_MAX_COUNT) {
-            hold_counter++;
-        }
+    // 合成ベクトルの大きさ（0〜1000）を計算
+    uint32_t magnitude = isqrt((uint32_t)((int32_t)norm_x * norm_x + (int32_t)norm_y * norm_y));
+    if (magnitude > 1000) magnitude = 1000;
 
-        // 合成ベクトルの大きさ（0〜1000）を計算
-        uint32_t magnitude = isqrt((uint32_t)((int32_t)norm_x * norm_x + (int32_t)norm_y * norm_y));
-        if (magnitude > 1000) magnitude = 1000;
+    // 円形デッドゾーン: 合成ベクトルで判定（DEADZONE を 0〜1000 スケールに変換）
+    uint32_t deadzone_normalized = (uint32_t)JOYSTICK_DEADZONE * 1000 /
+        ((JOYSTICK_ADC_MAX - JOYSTICK_ADC_MIN) / 2);
 
-        // 合成ベクトルに対して速度カーブを適用
-        int32_t base_speed = apply_speed_curve(magnitude);
+    if (magnitude > deadzone_normalized) {
+        // デッドゾーン分を差し引いてスケーリング
+        int32_t effective = (int32_t)magnitude - (int32_t)deadzone_normalized;
+        int32_t effective_max = 1000 - (int32_t)deadzone_normalized;
+        if (effective_max < 1) effective_max = 1;
+        uint32_t adjusted_magnitude = (uint32_t)effective * 1000 / effective_max;
+        if (adjusted_magnitude > 1000) adjusted_magnitude = 1000;
 
-        // Phase 1: base_speed → NORM_SPEED（二乗カーブで加速）
-        int32_t progress1 = (int32_t)hold_counter * hold_counter
-                          / ((int32_t)JOYSTICK_ACCEL_MAX_COUNT * JOYSTICK_ACCEL_MAX_COUNT / 1000);
-        int32_t phase1_speed = base_speed + (JOYSTICK_NORM_SPEED - base_speed) * progress1 / 1000;
-        phase1_speed = constrain(phase1_speed, base_speed, JOYSTICK_NORM_SPEED);
-
-        // 全倒し判定
-        bool full_tilt = (smooth_x <= JOYSTICK_FULL_LOW) || (smooth_x >= JOYSTICK_FULL_HIGH)
-                      || (smooth_y <= JOYSTICK_FULL_LOW) || (smooth_y >= JOYSTICK_FULL_HIGH);
-
-        int32_t final_speed = phase1_speed;
-
-        if (full_tilt) {
-            // Phase 2: NORM_SPEED → MAX_SPEED（二乗カーブで加速、別カウンタ）
-            if (full_tilt_counter < JOYSTICK_ACCEL_MAX_COUNT) {
-                full_tilt_counter++;
-            }
-            int32_t progress2 = (int32_t)full_tilt_counter * full_tilt_counter
-                              / ((int32_t)JOYSTICK_ACCEL_MAX_COUNT * JOYSTICK_ACCEL_MAX_COUNT / 1000);
-            final_speed = phase1_speed + (JOYSTICK_MAX_SPEED - phase1_speed) * progress2 / 1000;
-            final_speed = constrain(final_speed, phase1_speed, JOYSTICK_MAX_SPEED);
-        } else {
-            full_tilt_counter = 0;
-        }
+        // 傾き量の二乗を加速度として蓄積（端数も保持して精度を確保）
+        accel_accum += (int32_t)adjusted_magnitude * adjusted_magnitude * JOYSTICK_ACCEL_RATE;
+        current_speed += accel_accum / 1000000;
+        accel_accum %= 1000000;
+        if (current_speed > JOYSTICK_MAX_SPEED) current_speed = JOYSTICK_MAX_SPEED;
 
         // 合成速度を各軸に方向比率で分配
-        int32_t speed_x = final_speed * (int32_t)norm_x / (int32_t)magnitude;
-        int32_t speed_y = final_speed * (int32_t)norm_y / (int32_t)magnitude;
+        int32_t speed_x = current_speed * (int32_t)norm_x / (int32_t)magnitude;
+        int32_t speed_y = current_speed * (int32_t)norm_y / (int32_t)magnitude;
 
         // サブピクセル蓄積
         subpx_x += speed_x;
         subpx_y += speed_y;
     } else {
-        hold_counter = 0;
-        full_tilt_counter = 0;
+        current_speed = 0;
+        accel_accum = 0;
         subpx_x = 0;
         subpx_y = 0;
     }
@@ -187,10 +161,10 @@ report_mouse_t js16_update(report_mouse_t mouse_report) {
 #if JOYSTICK_DEBUG
     if (++debug_timer >= 100) {
         debug_timer = 0;
-        uprintf("Xr=%u cx=%u dx=%d nx=%d | Yr=%u cy=%u dy=%d ny=%d | h=%u\n",
-                smooth_x, center_x, mouse_report.x, norm_x,
-                smooth_y, center_y, mouse_report.y, norm_y,
-                hold_counter);
+        uprintf("Xr=%u cx=%u dx=%d | Yr=%u cy=%u dy=%d | spd=%ld\n",
+                smooth_x, center_x, mouse_report.x,
+                smooth_y, center_y, mouse_report.y,
+                current_speed);
     }
 #endif
 

@@ -123,11 +123,23 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
         uint32_t adjusted_magnitude = (uint32_t)effective * 1000 / effective_max;
         if (adjusted_magnitude > 1000) adjusted_magnitude = 1000;
 
-        // 傾き量の二乗を加速度として蓄積（端数も保持して精度を確保）
-        accel_accum += (int32_t)adjusted_magnitude * adjusted_magnitude * JOYSTICK_ACCEL_RATE;
-        current_speed += accel_accum / 1000000;
-        accel_accum %= 1000000;
-        if (current_speed > JOYSTICK_MAX_SPEED) current_speed = JOYSTICK_MAX_SPEED;
+        // 現在の傾き量に基づく速度上限（二乗カーブ）
+        int32_t speed_limit = (int32_t)(adjusted_magnitude * adjusted_magnitude / 1000) * JOYSTICK_MAX_SPEED / 1000;
+
+        if (current_speed < speed_limit) {
+            // 加速: 傾き量の二乗を加速度として蓄積
+            accel_accum += (int32_t)adjusted_magnitude * adjusted_magnitude * JOYSTICK_ACCEL_RATE;
+            current_speed += accel_accum / 1000000;
+            accel_accum %= 1000000;
+            if (current_speed > speed_limit) current_speed = speed_limit;
+        } else if (current_speed > speed_limit) {
+            // 減速: スティックを戻した量に応じて速度を落とす
+            int32_t decel = (current_speed - speed_limit) * JOYSTICK_DECEL_RATE / 100;
+            if (decel < 1) decel = 1;
+            current_speed -= decel;
+            if (current_speed < speed_limit) current_speed = speed_limit;
+            accel_accum = 0;
+        }
 
         // 合成速度を各軸に方向比率で分配
         int32_t speed_x = current_speed * (int32_t)norm_x / (int32_t)magnitude;

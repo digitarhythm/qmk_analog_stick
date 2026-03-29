@@ -8,6 +8,7 @@
 - **ベクトル合成**: X/Y 軸を合成ベクトルとして処理し、斜め方向も均一な速度で移動
 - **円形デッドゾーン**: 合成ベクトルの大きさで判定。全方向均一なデッドゾーン
 - **二乗加速**: スティックの傾き量の二乗に比例した加速度。傾け始めはゆっくり、大きく倒すほど速く加速
+- **比例減速**: スティックを戻すと、戻した量に応じて速度が比例的に減速。現在の傾き量に対応した速度上限へ向かって指数的に収束
 - **移動平均フィルタ**: ADC ノイズの除去
 - **起動時キャリブレーション**: TMR センサーのウォームアップ待機と中心値の自動取得
 - **非対称レンジ補正**: 中心値が ADC レンジの中央にない場合でも方向ごとに正規化
@@ -143,8 +144,9 @@ SRC += analog.c qmk_analog_stick.c
 2. 各軸を -1000〜+1000 に正規化（非対称レンジ補正）
 3. X/Y の合成ベクトル（magnitude）を計算
 4. 円形デッドゾーン判定
-5. デッドゾーン差し引き後の傾き量で二乗加速
-6. 合成速度を X/Y 方向比率で分配
+5. 現在の傾き量から速度上限 (speed_limit) を計算（二乗カーブ）
+6. `current_speed < speed_limit` なら加速、`current_speed > speed_limit` なら比例減速
+7. 合成速度を X/Y 方向比率で分配
 7. サブピクセル蓄積 + 整数ピクセル変換
 8. ボタン状態読み取り (`JOYSTICK_SW_PIN` 定義時)
 
@@ -161,11 +163,12 @@ SRC += analog.c qmk_analog_stick.c
      ↓
 円形デッドゾーン判定 (magnitude > deadzone?)
      ↓  YES
-デッドゾーン差し引き → adjusted_magnitude
+デッドゾーン差し引き → adjusted_magnitude (0〜1000)
      ↓
-加速度 = adjusted_magnitude² × ACCEL_RATE
+速度上限: speed_limit = adjusted_magnitude² × MAX_SPEED / 1000000
      ↓
-current_speed += 加速度  (毎サイクル蓄積、MAX_SPEED で上限)
+current_speed < speed_limit?  → 加速: current_speed += adjusted_magnitude² × ACCEL_RATE / 1000000
+current_speed > speed_limit?  → 減速: current_speed -= (current_speed - speed_limit) × DECEL_RATE / 100
      ↓
 方向分配: speed_x = current_speed × norm_x / magnitude
           speed_y = current_speed × norm_y / magnitude
@@ -179,19 +182,47 @@ current_speed += 加速度  (毎サイクル蓄積、MAX_SPEED で上限)
 
 ```
 加速度/サイクル = (adjusted_magnitude / 1000)² × ACCEL_RATE
+速度上限 = (adjusted_magnitude / 1000)² × MAX_SPEED
 ```
 
 - **少し倒す**: 加速度が小さい → ゆっくり加速 → 精密操作
 - **大きく倒す**: 加速度が大きい → 速く加速 → 素早い移動
-- **どの傾きでも** MAX_SPEED まで到達可能（時間の差だけ）
-- **スティックを離す**: 速度が即座にリセット
+- **どの傾きでも** 傾き量に対応した速度上限まで到達可能
+- **スティックをデッドゾーンまで戻す**: 速度が即座にリセット
 
-| 傾き | 加速度/cycle | MAX_SPEED(8.0) 到達時間 |
+| 傾き | 加速度/cycle | 速度上限 (MAX_SPEED=8000) |
 |---|---|---|
-| 20% | 0.00064 | 約200秒 |
-| 50% | 0.004 | 約20秒 |
-| 70% | 0.008 | 約10秒 |
-| 100% | 0.016 | 約5秒 |
+| 30% | 0.00144 | 720 (0.72 px/cycle) |
+| 50% | 0.004 | 2000 (2.0 px/cycle) |
+| 70% | 0.00784 | 3920 (3.92 px/cycle) |
+| 100% | 0.016 | 8000 (8.0 px/cycle) |
+
+### 減速の仕組み
+
+スティックを戻すと `speed_limit` が下がり、`current_speed` がそれを超えた状態になります。その差分の `DECEL_RATE%` ずつ毎サイクル削減されます（指数的減衰）。
+
+```
+減速量/サイクル = (current_speed - speed_limit) × DECEL_RATE / 100
+```
+
+- **ちょっと戻す**: speed_limit が少し下がる → 緩やかな減速
+- **大きく戻す**: speed_limit が大きく下がる → 急減速
+- **デッドゾーンまで戻す**: 速度即時リセット
+
+**DECEL_RATE=50（デフォルト）での減速例:**
+
+全倒し（speed=8000）から 50% 戻し（speed_limit=2000）にした場合:
+
+| フレーム | 速度 |
+|---|---|
+| 0 | 8000 |
+| 1 | 5000 |
+| 2 | 3500 |
+| 3 | 2750 |
+| 5 | 2100 |
+| 8 | ≈2000 |
+
+約 80ms（8フレーム @ 100Hz）で目標速度に到達します。
 
 ### 円形デッドゾーン
 
@@ -275,18 +306,28 @@ Joystick SW -----> GPIOピン（内部プルアップ有効）
 |---|---|---|
 | `JOYSTICK_MAX_SPEED` | `8000` | 最大速度 (x1000 スケール、8000 = 8.0 px/cycle) |
 | `JOYSTICK_ACCEL_RATE` | `16` | 加速度係数。大きいほど速く加速する |
+| `JOYSTICK_DECEL_RATE` | `50` | 減速率 (%)。スティックを戻したとき速度上限との差のこの割合ずつ減速する |
 
-- `MAX_SPEED`: 速度の上限。どの傾き量でもこの速度を超えません
-- `ACCEL_RATE`: 傾き量の二乗にこの値を掛けたものが毎サイクルの加速度になります。全倒しで約5秒で MAX_SPEED に到達します
+- `MAX_SPEED`: 全倒し時の速度上限。傾き量に応じた速度上限は `(傾き%)² × MAX_SPEED` になります
+- `ACCEL_RATE`: 傾き量の二乗にこの値を掛けたものが毎サイクルの加速度になります。全倒しで約5秒で速度上限に到達します
+- `DECEL_RATE`: スティックを戻したとき、目標速度（speed_limit）との差のこの割合ずつ毎サイクル減速します。大きいほど戻し量への追従が素早くなります
 
 **ACCEL_RATE の目安:**
 
-| ACCEL_RATE | 全倒し時の MAX_SPEED(8000) 到達時間 |
+| ACCEL_RATE | 全倒し時の速度上限到達時間 |
 |---|---|
 | `8` | 約10秒 |
 | `16` | 約5秒 (デフォルト) |
 | `32` | 約2.5秒 |
 | `64` | 約1.25秒 |
+
+**DECEL_RATE の目安（全倒し→50%戻しの場合）:**
+
+| DECEL_RATE | 目標速度到達フレーム数 (100Hz) |
+|---|---|
+| `30` | 約15フレーム (150ms) |
+| `50` | 約8フレーム (80ms)（デフォルト） |
+| `80` | 約4フレーム (40ms) |
 
 ### ADC Parameters
 
@@ -348,6 +389,7 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 #define JOYSTICK_DEADZONE      60
 #define JOYSTICK_MAX_SPEED   3000   // 3.0
 #define JOYSTICK_ACCEL_RATE     4   // 全倒しで約20秒でMAX
+#define JOYSTICK_DECEL_RATE    30   // ゆっくり減速
 ```
 
 ### 高速操作重視 (ブラウジング / ゲーム向け)
@@ -358,6 +400,7 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 #define JOYSTICK_DEADZONE      20
 #define JOYSTICK_MAX_SPEED  15000   // 15.0
 #define JOYSTICK_ACCEL_RATE    64   // 全倒しで約1.25秒でMAX
+#define JOYSTICK_DECEL_RATE    80   // 素早く減速
 ```
 
 ### ボタン付き（左クリック）

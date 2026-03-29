@@ -60,6 +60,13 @@
 #define JOYSTICK_ACCEL_RATE   16   // 全倒しで約5秒でMAX_SPEEDに到達
 #endif
 
+// 減速率（%/サイクル）
+// スティックを戻したとき、目標速度との差のこの割合ずつ減速する
+// 大きいほどスティックの戻し量に素早く追従する（0〜100）
+#ifndef JOYSTICK_DECEL_RATE
+#define JOYSTICK_DECEL_RATE   50
+#endif
+
 // 移動平均サンプル数
 #ifndef JOYSTICK_SMOOTHING
 #define JOYSTICK_SMOOTHING    4

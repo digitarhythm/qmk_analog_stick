@@ -37,12 +37,12 @@
 
 // 中心付近の不感帯（ADC値）
 #ifndef JOYSTICK_DEADZONE
-#define JOYSTICK_DEADZONE    40
+#define JOYSTICK_DEADZONE    15
 #endif
 
 // ADC値の実測範囲
 #ifndef JOYSTICK_ADC_MIN
-#define JOYSTICK_ADC_MIN      5
+#define JOYSTICK_ADC_MIN      2
 #endif
 #ifndef JOYSTICK_ADC_MAX
 #define JOYSTICK_ADC_MAX   1023

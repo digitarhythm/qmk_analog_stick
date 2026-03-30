@@ -28,6 +28,11 @@ static int32_t subpx_y = 0;
 static int32_t current_speed = 0;    // 現在の速度（x1000スケール）
 static int32_t accel_accum = 0;      // 加速度の端数蓄積
 
+// 離し時の減速継続用（最後の有効方向を保持）
+static int16_t  last_norm_x   = 0;
+static int16_t  last_norm_y   = 0;
+static uint32_t last_magnitude = 1;
+
 // デバッグタイマー
 static uint16_t debug_timer = 0;
 
@@ -141,6 +146,11 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
             accel_accum = 0;
         }
 
+        // 最後の有効方向を保存（離し時の減速継続用）
+        last_norm_x   = norm_x;
+        last_norm_y   = norm_y;
+        last_magnitude = magnitude;
+
         // 合成速度を各軸に方向比率で分配
         int32_t speed_x = current_speed * (int32_t)norm_x / (int32_t)magnitude;
         int32_t speed_y = current_speed * (int32_t)norm_y / (int32_t)magnitude;
@@ -149,10 +159,22 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
         subpx_x += speed_x;
         subpx_y += speed_y;
     } else {
-        current_speed = 0;
+        // デッドゾーン内 - 最後の方向で緩やかに減速
         accel_accum = 0;
-        subpx_x = 0;
-        subpx_y = 0;
+        if (current_speed > 0) {
+            int32_t decel = current_speed * JOYSTICK_DECEL_RATE / 100;
+            if (decel < 1) decel = 1;
+            current_speed -= decel;
+            if (current_speed < 0) current_speed = 0;
+
+            int32_t speed_x = current_speed * (int32_t)last_norm_x / (int32_t)last_magnitude;
+            int32_t speed_y = current_speed * (int32_t)last_norm_y / (int32_t)last_magnitude;
+            subpx_x += speed_x;
+            subpx_y += speed_y;
+        } else {
+            subpx_x = 0;
+            subpx_y = 0;
+        }
     }
 
     // 蓄積値から整数ピクセルを取り出す

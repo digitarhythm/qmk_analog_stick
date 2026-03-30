@@ -1,3 +1,9 @@
+[日本語](#日本語) | [English](#english)
+
+---
+
+<a name="日本語"></a>
+
 # QMK Analog Stick Library
 
 アナログジョイスティックを QMK/Vial ファームウェアでマウスカーソル操作に使用するためのライブラリです。K-SILVER JS16 (TMR) / JH16 (Hall Effect) 等のアナログ出力ジョイスティックに対応しています。
@@ -147,8 +153,8 @@ SRC += analog.c qmk_analog_stick.c
 5. 現在の傾き量から速度上限 (speed_limit) を計算（二乗カーブ）
 6. `current_speed < speed_limit` なら加速、`current_speed > speed_limit` なら比例減速
 7. 合成速度を X/Y 方向比率で分配
-7. サブピクセル蓄積 + 整数ピクセル変換
-8. ボタン状態読み取り (`JOYSTICK_SW_PIN` 定義時)
+8. サブピクセル蓄積 + 整数ピクセル変換
+9. ボタン状態読み取り (`JOYSTICK_SW_PIN` 定義時)
 
 ## Architecture
 
@@ -207,7 +213,7 @@ current_speed > speed_limit?  → 減速: current_speed -= (current_speed - spee
 
 - **ちょっと戻す**: speed_limit が少し下がる → 緩やかな減速
 - **大きく戻す**: speed_limit が大きく下がる → 急減速
-- **デッドゾーンまで戻す**: 速度即時リセット
+- **デッドゾーンまで戻す**: 最後の方向でゆっくり停止
 
 **DECEL_RATE=50（デフォルト）での減速例:**
 
@@ -333,7 +339,7 @@ Joystick SW -----> GPIOピン（内部プルアップ有効）
 
 | Parameter | Default | Description |
 |---|---|---|
-| `JOYSTICK_ADC_MIN` | `5` | ADC の実測最小値 |
+| `JOYSTICK_ADC_MIN` | `2` | ADC の実測最小値 |
 | `JOYSTICK_ADC_MAX` | `1023` | ADC の実測最大値 |
 
 実際のジョイスティックで計測した値を設定してください。方向ごとのスケーリング計算に使用されます。
@@ -342,7 +348,7 @@ Joystick SW -----> GPIOピン（内部プルアップ有効）
 
 | Parameter | Default | Description |
 |---|---|---|
-| `JOYSTICK_DEADZONE` | `40` | 中心付近のデッドゾーン (ADC 値) |
+| `JOYSTICK_DEADZONE` | `15` | 中心付近のデッドゾーン (ADC 値) |
 | `JOYSTICK_SMOOTHING` | `4` | 移動平均のサンプル数 |
 
 - `DEADZONE`: 円形デッドゾーンの半径（ADC 値単位）。合成ベクトルの大きさがこの値以下の場合、カーソルは動きません。小さいほど敏感、大きいほど安定
@@ -438,7 +444,7 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 
 ### K-SILVER JS16 / JH16
 
-- **センシング方式**: TMR (トンネル磁気抵抗効果)
+- **センシング方式**: TMR (トンネル磁気抵抗効果) / Hall Effect
 - **動作電圧**: 1.8V 〜 3.3V
 - **消費電力**: 約 210 〜 215 uA
 - **耐久性**: 約 500 万回転
@@ -523,6 +529,540 @@ Switch 2   --> SW         --> GPIO ピン (※)
 
 - SW ピンが GND にショートしていないか確認
 - 配線が正しいか確認（SW ピンはアクティブ LOW: 押すと GND に接続）
+
+## License
+
+MIT
+
+---
+
+<a name="english"></a>
+
+# QMK Analog Stick Library
+
+A library for using analog joysticks as mouse cursor controllers in QMK/Vial firmware. Compatible with analog output joysticks such as the K-SILVER JS16 (TMR) and JH16 (Hall Effect).
+
+## Features
+
+- **Sub-pixel processing**: Internal x1000 scale precision for smooth cursor movement even at speeds below 1.0 px/cycle
+- **Vector composition**: X/Y axes are processed as a combined vector, providing uniform speed in all directions including diagonals
+- **Circular deadzone**: Deadzone evaluated against the magnitude of the combined vector — uniform in all directions
+- **Quadratic acceleration**: Acceleration proportional to the square of the tilt amount — slow at start, faster as you push further
+- **Proportional deceleration**: Returning the stick reduces speed proportionally; current speed converges exponentially toward the speed limit for the current tilt
+- **Moving average filter**: ADC noise reduction
+- **Startup calibration**: TMR sensor warmup delay and automatic center value acquisition
+- **Asymmetric range correction**: Per-direction normalization even when the center output is not at the midpoint of the ADC range
+- **Button support**: Mouse click via SW pin (direct GPIO connection, optional)
+- **Fully configurable**: All parameters can be overridden via `#define` in `config.h`
+
+## Requirements
+
+- **MCU**: RP2040 (RP2040-Zero, etc.)
+- **QMK Firmware** (including Vial-compatible forks)
+- **ChibiOS** (uses the RP2040 ADC driver)
+
+## Files
+
+| File | Description |
+|---|---|
+| `qmk_analog_stick.h` | Header file (default parameter definitions + API declarations) |
+| `qmk_analog_stick.c` | Implementation file |
+| `halconf.h` | ChibiOS HAL configuration (enables ADC) |
+| `mcuconf.h` | ChibiOS MCU configuration (enables RP2040 ADC driver) |
+
+## Quick Start
+
+### 1. Place the Files
+
+Copy `qmk_analog_stick.h`, `qmk_analog_stick.c`, `halconf.h`, and `mcuconf.h` into your keyboard directory. If `halconf.h` or `mcuconf.h` already exist, merge the content from steps 2 and 3 into the existing files.
+
+```
+keyboards/your_keyboard/
+  ├── qmk_analog_stick.h
+  ├── qmk_analog_stick.c
+  ├── halconf.h
+  ├── mcuconf.h
+  └── keymaps/default/
+      ├── config.h
+      ├── keymap.c
+      └── rules.mk
+```
+
+### 2. halconf.h
+
+```c
+#pragma once
+
+#define HAL_USE_ADC TRUE
+
+#include_next <halconf.h>
+```
+
+### 3. mcuconf.h
+
+```c
+#pragma once
+
+#include_next <mcuconf.h>
+
+#undef RP_ADC_USE_ADC1
+#define RP_ADC_USE_ADC1 TRUE
+```
+
+### 4. config.h
+
+At minimum, define the joystick connection pins.
+
+```c
+#define JOYSTICK_X_PIN GP28
+#define JOYSTICK_Y_PIN GP29
+
+// Optional: enable button support
+// #define JOYSTICK_SW_PIN GP13
+```
+
+### 5. keymap.c
+
+```c
+#include QMK_KEYBOARD_H
+#include "qmk_analog_stick.h"
+
+// ... keymap definitions ...
+
+void keyboard_post_init_user(void) {
+    analog_stick_init();
+}
+
+report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
+    return analog_stick_update(mouse_report);
+}
+```
+
+### 6. rules.mk
+
+```makefile
+POINTING_DEVICE_ENABLE = yes
+POINTING_DEVICE_DRIVER = custom
+SRC += analog.c qmk_analog_stick.c
+```
+
+## API Reference
+
+### `void analog_stick_init(void)`
+
+Initializes the joystick. Call this inside `keyboard_post_init_user()`.
+
+**What it does:**
+
+1. Waits `JOYSTICK_WARMUP_MS` milliseconds for the TMR sensor to stabilize
+2. Samples the X/Y axes 64 times to calibrate center values
+3. Initializes the moving average buffer with the center values
+4. If `JOYSTICK_SW_PIN` is defined, configures the button pin as input with pull-up
+5. If debug is enabled, prints calibration results to the console
+
+**Note:** Do not touch the stick during initialization. Any deflection will be recorded as the center value.
+
+---
+
+### `report_mouse_t analog_stick_update(report_mouse_t mouse_report)`
+
+Updates the mouse report on every scan cycle. Call this inside `pointing_device_task_user()`.
+
+**Arguments:**
+
+| Name | Type | Description |
+|---|---|---|
+| `mouse_report` | `report_mouse_t` | Current mouse report |
+
+**Returns:**
+
+Updated mouse report with `mouse_report.x`, `mouse_report.y`, and (if `JOYSTICK_SW_PIN` is defined) `mouse_report.buttons` set.
+
+**What it does:**
+
+1. ADC read + moving average filter
+2. Normalize each axis to -1000~+1000 (with asymmetric range correction)
+3. Calculate the combined vector magnitude (X/Y)
+4. Circular deadzone check
+5. Calculate speed limit (speed_limit) from current tilt amount (quadratic curve)
+6. If `current_speed < speed_limit`: accelerate; if `current_speed > speed_limit`: proportionally decelerate
+7. Distribute combined speed to X/Y axes by direction ratio
+8. Sub-pixel accumulation + integer pixel conversion
+9. Read button state (if `JOYSTICK_SW_PIN` is defined)
+
+## Architecture
+
+### Speed Determination Flow
+
+```
+Stick tilt
+     ↓
+Normalize each axis (-1000~+1000)
+     ↓
+Combined vector: magnitude = √(x² + y²)
+     ↓
+Circular deadzone check (magnitude > deadzone?)
+     ↓  YES
+Subtract deadzone → adjusted_magnitude (0~1000)
+     ↓
+Speed limit: speed_limit = adjusted_magnitude² × MAX_SPEED / 1000000
+     ↓
+current_speed < speed_limit?  → Accelerate: current_speed += adjusted_magnitude² × ACCEL_RATE / 1000000
+current_speed > speed_limit?  → Decelerate: current_speed -= (current_speed - speed_limit) × DECEL_RATE / 100
+     ↓
+Direction distribution: speed_x = current_speed × norm_x / magnitude
+                        speed_y = current_speed × norm_y / magnitude
+     ↓
+Sub-pixel accumulation → mouse_report.x, mouse_report.y
+```
+
+### How Acceleration Works
+
+The **square** of the tilt amount becomes the per-cycle acceleration. Holding the stick continuously builds up speed.
+
+```
+Acceleration/cycle = (adjusted_magnitude / 1000)² × ACCEL_RATE
+Speed limit        = (adjusted_magnitude / 1000)² × MAX_SPEED
+```
+
+- **Small tilt**: low acceleration → slow buildup → precise control
+- **Large tilt**: high acceleration → fast buildup → quick movement
+- **Any tilt**: speed can reach its corresponding speed limit (only the time differs)
+- **Release to deadzone**: cursor coasts to a stop using the last known direction
+
+| Tilt | Accel/cycle | Speed limit (MAX_SPEED=8000) |
+|---|---|---|
+| 30% | 0.00144 | 720 (0.72 px/cycle) |
+| 50% | 0.004   | 2000 (2.0 px/cycle) |
+| 70% | 0.00784 | 3920 (3.92 px/cycle) |
+| 100% | 0.016  | 8000 (8.0 px/cycle) |
+
+### How Deceleration Works
+
+When the stick is returned toward center, `speed_limit` drops. If `current_speed` exceeds it, `DECEL_RATE%` of the difference is shed each cycle (exponential decay).
+
+```
+Deceleration/cycle = (current_speed - speed_limit) × DECEL_RATE / 100
+```
+
+- **Small return**: speed_limit drops slightly → gentle deceleration
+- **Large return**: speed_limit drops sharply → rapid deceleration
+- **Return to deadzone**: cursor coasts to a stop using the last known direction
+
+**Deceleration example with DECEL_RATE=50 (default):**
+
+Full tilt (speed=8000) → return to 50% (speed_limit=2000):
+
+| Frame | Speed |
+|---|---|
+| 0 | 8000 |
+| 1 | 5000 |
+| 2 | 3500 |
+| 3 | 2750 |
+| 5 | 2100 |
+| 8 | ≈2000 |
+
+Reaches the target speed in approximately 80ms (8 frames @ 100Hz).
+
+### Circular Deadzone
+
+The deadzone is evaluated against the magnitude of the combined X/Y vector.
+
+```
+Square deadzone (before)    This library (circular)
++---+---+                       .---.
+|   |   |                      /     \
++---+---+                     |   o   |
+|   |   |                      \     /
++---+---+                       '---'
+```
+
+A square deadzone causes one axis to react before the other in diagonal directions, producing a four-directional pull effect. The circular deadzone provides a uniform deadzone in all directions.
+
+### Vector Composition
+
+Processing X and Y axes independently leads to non-uniform speed in diagonal directions. This library calculates acceleration against the combined vector magnitude, then distributes it to X/Y by direction ratio.
+
+```
+magnitude = √(norm_x² + norm_y²)
+speed_x = current_speed × norm_x / magnitude
+speed_y = current_speed × norm_y / magnitude
+```
+
+## Parameter Reference
+
+All parameters can be overridden in `config.h` using `#define`. If not defined, the default value is used.
+
+### Required Parameters
+
+| Parameter | Description | Example |
+|---|---|---|
+| `JOYSTICK_X_PIN` | ADC pin for the X axis | `GP28` |
+| `JOYSTICK_Y_PIN` | ADC pin for the Y axis | `GP29` |
+
+### Button Parameters
+
+Defining `JOYSTICK_SW_PIN` enables button support. If not defined, no button-related code is compiled in.
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_SW_PIN` | (undefined) | GPIO pin for SW. Defining this enables button support |
+| `JOYSTICK_SW_BUTTON` | `MOUSE_BTN1` | Mouse button assigned to the joystick switch |
+
+**Available mouse button constants:**
+
+| Constant | Description |
+|---|---|
+| `MOUSE_BTN1` | Left click (default) |
+| `MOUSE_BTN2` | Right click |
+| `MOUSE_BTN3` | Middle click (wheel click) |
+| `MOUSE_BTN4` | Back |
+| `MOUSE_BTN5` | Forward |
+
+**Examples:**
+
+```c
+// Left click (default)
+#define JOYSTICK_SW_PIN GP13
+
+// Change to right click
+#define JOYSTICK_SW_PIN GP13
+#define JOYSTICK_SW_BUTTON MOUSE_BTN2
+```
+
+**Wiring:**
+
+The joystick SW pin connects to internal GND when pressed (active LOW), so connecting it directly to a GPIO is sufficient. No external pull-up resistor is needed (MCU internal pull-up is used).
+
+```
+Joystick SW -----> GPIO pin (internal pull-up enabled)
+```
+
+> **Note:** The joystick SW pin cannot be connected directly to a key matrix. SW is a single-pin output that shorts to internal GND when pressed and cannot function as a ROW-COL matrix connection. Connect it directly to a GPIO pin.
+
+### Speed / Acceleration Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_MAX_SPEED` | `8000` | Maximum speed (x1000 scale; 8000 = 8.0 px/cycle) |
+| `JOYSTICK_ACCEL_RATE` | `16` | Acceleration coefficient — higher values accelerate faster |
+| `JOYSTICK_DECEL_RATE` | `50` | Deceleration rate (%). When returning the stick, this percentage of the speed excess is shed each cycle |
+
+- `MAX_SPEED`: Speed limit at full deflection. The speed limit at any tilt is `(tilt%)² × MAX_SPEED`
+- `ACCEL_RATE`: Per-cycle acceleration is the square of the tilt amount multiplied by this value. At full deflection, the speed limit is reached in approximately 5 seconds
+- `DECEL_RATE`: When the stick is returned, this percentage of `(current_speed - speed_limit)` is removed each cycle. Higher values track stick position more quickly
+
+**ACCEL_RATE reference:**
+
+| ACCEL_RATE | Time to reach speed limit at full deflection |
+|---|---|
+| `8`  | ~10 seconds |
+| `16` | ~5 seconds (default) |
+| `32` | ~2.5 seconds |
+| `64` | ~1.25 seconds |
+
+**DECEL_RATE reference (full deflection → 50% return):**
+
+| DECEL_RATE | Frames to reach target speed (100Hz) |
+|---|---|
+| `30` | ~15 frames (150ms) |
+| `50` | ~8 frames (80ms) (default) |
+| `80` | ~4 frames (40ms) |
+
+### ADC Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_ADC_MIN` | `2` | Measured minimum ADC value |
+| `JOYSTICK_ADC_MAX` | `1023` | Measured maximum ADC value |
+
+Set these to values measured from your actual joystick. They are used in the per-direction scaling calculation.
+
+### Filter Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_DEADZONE` | `15` | Center deadzone radius (in ADC units) |
+| `JOYSTICK_SMOOTHING` | `4` | Moving average sample count |
+
+- `DEADZONE`: Circular deadzone radius in ADC units. If the combined vector magnitude is within this value, the cursor does not move. Smaller = more sensitive; larger = more stable
+- `SMOOTHING`: Moving average window size. Larger = smoother, but with more input latency
+
+### Startup Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_WARMUP_MS` | `3000` | TMR sensor stabilization wait time (ms) |
+
+TMR sensors produce unstable output immediately after power-on, so this delay is applied before calibration.
+
+### Debug Parameters
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_DEBUG` | `1` | Debug output (`1`: enabled, `0`: disabled) |
+
+When enabled, the following information is printed to the console (requires `"console": true` in `keyboard.json`) approximately once per second:
+
+```
+Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
+```
+
+| Field | Description |
+|---|---|
+| `Xr` / `Yr` | Smoothed ADC raw values |
+| `cx` / `cy` | Calibrated center values |
+| `dx` / `dy` | Mouse movement output (pixels) |
+| `spd` | Current speed (x1000 scale) |
+
+To view debug output:
+- **QMK Toolbox**: Connect the keyboard and console output appears automatically
+- **qmk console**: Run `qmk console` in a terminal
+
+## Configuration Examples
+
+### Precision-focused (CAD / design work)
+
+```c
+#define JOYSTICK_X_PIN       GP28
+#define JOYSTICK_Y_PIN       GP29
+#define JOYSTICK_DEADZONE      60
+#define JOYSTICK_MAX_SPEED   3000   // 3.0
+#define JOYSTICK_ACCEL_RATE     4   // ~20 seconds to MAX at full deflection
+#define JOYSTICK_DECEL_RATE    30   // gradual deceleration
+```
+
+### Speed-focused (browsing / gaming)
+
+```c
+#define JOYSTICK_X_PIN       GP28
+#define JOYSTICK_Y_PIN       GP29
+#define JOYSTICK_DEADZONE      20
+#define JOYSTICK_MAX_SPEED  15000   // 15.0
+#define JOYSTICK_ACCEL_RATE    64   // ~1.25 seconds to MAX at full deflection
+#define JOYSTICK_DECEL_RATE    80   // quick deceleration
+```
+
+### With button (left click)
+
+```c
+#define JOYSTICK_X_PIN       GP28
+#define JOYSTICK_Y_PIN       GP29
+#define JOYSTICK_SW_PIN      GP13
+```
+
+### With button (right click)
+
+```c
+#define JOYSTICK_X_PIN       GP28
+#define JOYSTICK_Y_PIN       GP29
+#define JOYSTICK_SW_PIN      GP13
+#define JOYSTICK_SW_BUTTON   MOUSE_BTN2
+```
+
+### Minimal (no button, default settings)
+
+```c
+#define JOYSTICK_X_PIN GP28
+#define JOYSTICK_Y_PIN GP29
+```
+
+## Hardware Notes
+
+### Supported Joysticks
+
+This library is broadly compatible with any joystick that outputs analog voltage read via ADC. Confirmed working models:
+
+- **K-SILVER JS16** (TMR sensing)
+- **K-SILVER JH16** (Hall Effect sensing)
+
+### K-SILVER JS16 / JH16
+
+- **Sensing method**: TMR (Tunnel Magnetoresistance) / Hall Effect
+- **Operating voltage**: 1.8V – 3.3V
+- **Current consumption**: ~210–215 µA
+- **Durability**: ~5 million rotations
+- **Pins**: VCC, GND, X output, Y output, SW (button)
+
+### RP2040 ADC Pins
+
+The RP2040 has four pins available for ADC use:
+
+| Pin | ADC Channel |
+|---|---|
+| GP26 | ADC0 |
+| GP27 | ADC1 |
+| GP28 | ADC2 |
+| GP29 | ADC3 |
+
+**Note**: On some boards, GP29 may be reserved for VSYS voltage monitoring. In that case, use GP26, GP27, or GP28.
+
+### Wiring Example
+
+```
+Joystick      RP2040-Zero
+----------    -----------
+VCC    ----->  3.3V
+GND    ----->  GND
+X out  ----->  GP28  (ADC pin)
+Y out  ----->  GP29  (ADC pin)
+SW     ----->  GP13  (any GPIO, optional)
+```
+
+### Wiring When Reusing an EC12 Encoder Footprint
+
+The K-SILVER JS16/JH16 can be mounted in an EC12/EC11 rotary encoder footprint, but the pin roles differ — take care with wiring.
+
+```
+EC12 pin       Joystick pin   Connect to
+---------      ------------   ----------
+Encoder A  --> X output   --> ADC pin (GP28, etc.)
+Encoder GND -> GND        --> GND
+Encoder B  --> Y output   --> ADC pin (GP29, etc.)
+Switch 1   --> VCC        --> 3.3V power rail (※)
+Switch 2   --> SW         --> GPIO pin (※)
+```
+
+> **(※) Note:** EC12 switch pins are normally connected to the key matrix ROW/COL lines. The joystick VCC requires a continuous 3.3V supply, so verify that the Switch 1 pad is connected to the 3.3V power rail. Switch 2 (SW) must be wired directly to a GPIO, not to the matrix.
+
+## Troubleshooting
+
+### Cursor moves on its own
+
+- Increase `JOYSTICK_DEADZONE` (e.g., `80`)
+- Increase `JOYSTICK_WARMUP_MS` to improve calibration accuracy (e.g., `5000`)
+- Do not touch the stick during startup calibration
+
+### Cursor does not move
+
+- Check that `HAL_USE_ADC TRUE` is defined in `halconf.h`
+- Check that `RP_ADC_USE_ADC1 TRUE` is defined in `mcuconf.h`
+- Check that `SRC += analog.c` is included in `rules.mk`
+- Check that joystick VCC is connected to 3.3V
+- Enable `JOYSTICK_DEBUG 1` and check the console to confirm ADC values are changing
+
+### Speed differs by direction
+
+- This occurs when the TMR sensor center output is not at the midpoint of the ADC range
+- This library handles it automatically via vector composition and per-direction scaling
+- For extreme asymmetry, set `JOYSTICK_ADC_MIN` / `JOYSTICK_ADC_MAX` to measured values
+
+### Cursor only moves in 4 directions / pulled toward 4 directions
+
+- This library addresses this with vector composition and a circular deadzone
+- If it still occurs, reduce `JOYSTICK_ACCEL_RATE` to limit maximum speed
+- Increasing `JOYSTICK_SMOOTHING` smooths out the input
+
+### Button does not respond
+
+- Check that `JOYSTICK_SW_PIN` is defined in `config.h`
+- Check that the SW pin is connected directly to a GPIO (not through the key matrix)
+- Use a multimeter to confirm continuity between SW and GND when pressed
+
+### Button is stuck pressed
+
+- Check that the SW pin is not shorted to GND
+- Check the wiring (SW is active LOW: pressing connects it to GND)
 
 ## License
 

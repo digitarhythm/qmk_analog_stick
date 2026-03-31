@@ -37,12 +37,12 @@
 
 // 中心付近の不感帯（ADC値）
 #ifndef JOYSTICK_DEADZONE
-#define JOYSTICK_DEADZONE    15
+#define JOYSTICK_DEADZONE    30
 #endif
 
 // ADC値の実測範囲
 #ifndef JOYSTICK_ADC_MIN
-#define JOYSTICK_ADC_MIN      2
+#define JOYSTICK_ADC_MIN      0
 #endif
 #ifndef JOYSTICK_ADC_MAX
 #define JOYSTICK_ADC_MAX   1023
@@ -64,7 +64,7 @@
 // スティックを戻したとき、目標速度との差のこの割合ずつ減速する
 // 大きいほどスティックの戻し量に素早く追従する（0〜100）
 #ifndef JOYSTICK_DECEL_RATE
-#define JOYSTICK_DECEL_RATE   10
+#define JOYSTICK_DECEL_RATE   5
 #endif
 
 // 移動平均サンプル数
@@ -74,7 +74,7 @@
 
 // TMRセンサー安定待ち時間
 #ifndef JOYSTICK_WARMUP_MS
-#define JOYSTICK_WARMUP_MS 3000
+#define JOYSTICK_WARMUP_MS 1000
 #endif
 
 // デバッグ出力の有効/無効

@@ -64,7 +64,7 @@
 // スティックを戻したとき、目標速度との差のこの割合ずつ減速する
 // 大きいほどスティックの戻し量に素早く追従する（0〜100）
 #ifndef JOYSTICK_DECEL_RATE
-#define JOYSTICK_DECEL_RATE   50
+#define JOYSTICK_DECEL_RATE   10
 #endif
 
 // 移動平均サンプル数

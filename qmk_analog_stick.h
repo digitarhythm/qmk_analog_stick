@@ -98,12 +98,31 @@
 #define JOYSTICK_DEBUG        1    // 1:有効 0:無効
 #endif
 
+// キャリブレーション EEPROM アドレス（競合する場合は config.h で上書き可能）
+#ifndef JOYSTICK_CALIB_EEPROM_ADDR
+#define JOYSTICK_CALIB_EEPROM_ADDR  2048
+#endif
+
 // ===== API =====
 
 // 初期化（keyboard_post_init_user 内で呼ぶ）
-// ウォームアップ待機 → キャリブレーション を実行
+// ウォームアップ待機 → 中心キャリブレーション → EEPROM 読み込み を実行
 void analog_stick_init(void);
+
+// スクロールモード用: 加速カーブなしの正規化傾き量を返す
+// out_x, out_y: -1000〜+1000（デッドゾーン処理済み、加速なし）
+// 加速状態もリセットするため、スクロールモード中は analog_stick_update() の代わりにこちらを呼ぶ
+void analog_stick_get_scroll_values(int16_t *out_x, int16_t *out_y);
 
 // マウスレポート更新（pointing_device_task_user 内で呼ぶ）
 // スムージング、デッドゾーン、加速カーブ、サブピクセル処理を適用
 report_mouse_t analog_stick_update(report_mouse_t mouse_report);
+
+// ADC レンジキャリブレーション（EEPROM 保存あり）
+// 1. analog_stick_calibration_start() でキャリブレーション開始
+// 2. スティックを全方向に最大まで倒す（5〜10 秒）
+// 3. analog_stick_calibration_end() で保存・完了
+void analog_stick_calibration_start(void);
+void analog_stick_calibration_end(void);
+void analog_stick_calibration_reset(void);  // EEPROM を消去しデフォルト値に戻す
+bool analog_stick_is_calibrating(void);     // LED 表示などに使用可能

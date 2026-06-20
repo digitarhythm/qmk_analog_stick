@@ -103,6 +103,26 @@ static int16_t normalize_axis(uint16_t val, uint16_t center, uint16_t adc_min, u
     return (int16_t)constrain(scaled, -1000, 1000);
 }
 
+// 取り付け向きの補正（正規化済みの norm_x/norm_y を 90°単位で回転）
+//   0:標準  1:時計回り90°(上→右)  2:180°(上→下)  3:反時計回り90°(上→左)
+static void apply_orientation(int16_t *x, int16_t *y) {
+#if JOYSTICK_ORIENTATION == 1
+    int16_t tx = *x;
+    *x = -(*y);
+    *y = tx;
+#elif JOYSTICK_ORIENTATION == 2
+    *x = -(*x);
+    *y = -(*y);
+#elif JOYSTICK_ORIENTATION == 3
+    int16_t tx = *x;
+    *x = *y;
+    *y = -tx;
+#else
+    (void)x;
+    (void)y;   // JOYSTICK_ORIENTATION == 0: 何もしない
+#endif
+}
+
 // 簡易整数平方根（ニュートン法）
 static uint32_t isqrt(uint32_t n) {
     if (n == 0) return 0;
@@ -166,6 +186,9 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
     // 各軸を -1000〜+1000 に正規化（ランタイム変数を使用）
     int16_t norm_x = normalize_axis(smooth_x, center_x, runtime_x_min, runtime_x_max);
     int16_t norm_y = normalize_axis(smooth_y, center_y, runtime_y_min, runtime_y_max);
+
+    // 取り付け向きの補正
+    apply_orientation(&norm_x, &norm_y);
 
     // 合成ベクトルの大きさ（0〜1000）を計算
     uint32_t magnitude = isqrt((uint32_t)((int32_t)norm_x * norm_x + (int32_t)norm_y * norm_y));
@@ -323,6 +346,9 @@ void analog_stick_get_scroll_values(int16_t *out_x, int16_t *out_y) {
 
     int16_t norm_x = normalize_axis(smooth_x, center_x, runtime_x_min, runtime_x_max);
     int16_t norm_y = normalize_axis(smooth_y, center_y, runtime_y_min, runtime_y_max);
+
+    // 取り付け向きの補正
+    apply_orientation(&norm_x, &norm_y);
 
     uint32_t magnitude = isqrt((uint32_t)((int32_t)norm_x * norm_x + (int32_t)norm_y * norm_y));
     if (magnitude > 1000) magnitude = 1000;

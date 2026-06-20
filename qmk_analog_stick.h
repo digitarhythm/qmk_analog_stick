@@ -35,6 +35,15 @@
 #define JOYSTICK_SW_BUTTON MOUSE_BTN1   // 左クリック
 #endif
 
+// 取り付け向きの補正（出力を90°単位で回転）
+//   0: 標準（現状のまま）
+//   1: 現在の「上」を「右」にする（時計回り90°）
+//   2: 現在の「上」を「下」にする（180°）
+//   3: 現在の「上」を「左」にする（反時計回り90°）
+#ifndef JOYSTICK_ORIENTATION
+#define JOYSTICK_ORIENTATION 0
+#endif
+
 // 中心付近の不感帯（ADC値）
 #ifndef JOYSTICK_DEADZONE
 #define JOYSTICK_DEADZONE    30

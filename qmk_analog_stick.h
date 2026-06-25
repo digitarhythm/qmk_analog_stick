@@ -6,14 +6,15 @@
 //
 // 使い方:
 //   1. config.h で必須パラメータ（JOYSTICK_X_PIN, JOYSTICK_Y_PIN）を定義
-//   2. config.h で任意のパラメータを上書き定義（デフォルト値あり）
-//   3. keymap.c で #include "qmk_analog_stick.h" する
-//   4. keyboard_post_init_user() 内で analog_stick_init() を呼ぶ
-//   5. pointing_device_task_user() 内で analog_stick_update() を呼ぶ
-//   6. rules.mk に SRC += qmk_analog_stick.c を追加
-//   7. rules.mk に POINTING_DEVICE_ENABLE = yes / POINTING_DEVICE_DRIVER = custom を追加
-//   8. halconf.h に HAL_USE_ADC TRUE を定義
-//   9. mcuconf.h に RP_ADC_USE_ADC1 TRUE を定義
+//   2. config.h でジョイスティックモデル（#define JH16 または #define JS16）を定義
+//   3. config.h で任意のパラメータを上書き定義（デフォルト値あり）
+//   4. keymap.c で #include "qmk_analog_stick.h" する
+//   5. keyboard_post_init_user() 内で analog_stick_init() を呼ぶ
+//   6. pointing_device_task_user() 内で analog_stick_update() を呼ぶ
+//   7. rules.mk に SRC += qmk_analog_stick.c を追加
+//   8. rules.mk に POINTING_DEVICE_ENABLE = yes / POINTING_DEVICE_DRIVER = custom を追加
+//   9. halconf.h に HAL_USE_ADC TRUE を定義
+//  10. mcuconf.h に RP_ADC_USE_ADC1 TRUE を定義
 
 #pragma once
 
@@ -24,6 +25,41 @@
 // ===== 必須パラメータ（config.h で定義必須） =====
 // #define JOYSTICK_X_PIN GP28
 // #define JOYSTICK_Y_PIN GP29
+
+// ===== ジョイスティックモデル選択（config.h でいずれか一方を定義） =====
+// #define JH16   // X: 8〜1023 / Y: 8〜782
+// #define JS16   // X: 0〜1023 / Y: 0〜1023
+
+// ADC レンジ（モデルに応じて決定、個別に上書きも可能）
+#if defined(JH16)
+#  ifndef JOYSTICK_ADC_X_MIN
+#    define JOYSTICK_ADC_X_MIN    8
+#  endif
+#  ifndef JOYSTICK_ADC_X_MAX
+#    define JOYSTICK_ADC_X_MAX 1023
+#  endif
+#  ifndef JOYSTICK_ADC_Y_MIN
+#    define JOYSTICK_ADC_Y_MIN    8
+#  endif
+#  ifndef JOYSTICK_ADC_Y_MAX
+#    define JOYSTICK_ADC_Y_MAX  782
+#  endif
+#elif defined(JS16)
+#  ifndef JOYSTICK_ADC_X_MIN
+#    define JOYSTICK_ADC_X_MIN    0
+#  endif
+#  ifndef JOYSTICK_ADC_X_MAX
+#    define JOYSTICK_ADC_X_MAX 1023
+#  endif
+#  ifndef JOYSTICK_ADC_Y_MIN
+#    define JOYSTICK_ADC_Y_MIN    0
+#  endif
+#  ifndef JOYSTICK_ADC_Y_MAX
+#    define JOYSTICK_ADC_Y_MAX 1023
+#  endif
+#else
+#  error "config.h に #define JH16 または #define JS16 を追加してください"
+#endif
 
 // ===== オプションパラメータ（config.h で上書き可能） =====
 
@@ -47,30 +83,6 @@
 // 中心付近の不感帯（ADC値）
 #ifndef JOYSTICK_DEADZONE
 #define JOYSTICK_DEADZONE    30
-#endif
-
-// ADC値の実測範囲（共通デフォルト値）
-#ifndef JOYSTICK_ADC_MIN
-#define JOYSTICK_ADC_MIN      0
-#endif
-#ifndef JOYSTICK_ADC_MAX
-#define JOYSTICK_ADC_MAX   1023
-#endif
-
-// X軸ADC範囲（未定義の場合は JOYSTICK_ADC_MIN/MAX を使用）
-#ifndef JOYSTICK_ADC_X_MIN
-#define JOYSTICK_ADC_X_MIN JOYSTICK_ADC_MIN
-#endif
-#ifndef JOYSTICK_ADC_X_MAX
-#define JOYSTICK_ADC_X_MAX JOYSTICK_ADC_MAX
-#endif
-
-// Y軸ADC範囲（未定義の場合は JOYSTICK_ADC_MIN/MAX を使用）
-#ifndef JOYSTICK_ADC_Y_MIN
-#define JOYSTICK_ADC_Y_MIN JOYSTICK_ADC_MIN
-#endif
-#ifndef JOYSTICK_ADC_Y_MAX
-#define JOYSTICK_ADC_Y_MAX JOYSTICK_ADC_MAX
 #endif
 
 // 速度設定（x1000スケール: 1000 = 1.0ピクセル/サイクル）
@@ -107,15 +119,10 @@
 #define JOYSTICK_DEBUG        1    // 1:有効 0:無効
 #endif
 
-// キャリブレーション EEPROM アドレス（競合する場合は config.h で上書き可能）
-#ifndef JOYSTICK_CALIB_EEPROM_ADDR
-#define JOYSTICK_CALIB_EEPROM_ADDR  2048
-#endif
-
 // ===== API =====
 
 // 初期化（keyboard_post_init_user 内で呼ぶ）
-// ウォームアップ待機 → 中心キャリブレーション → EEPROM 読み込み を実行
+// ウォームアップ待機 → 中心値計測 を実行
 void analog_stick_init(void);
 
 // スクロールモード用: 加速カーブなしの正規化傾き量を返す
@@ -126,12 +133,3 @@ void analog_stick_get_scroll_values(int16_t *out_x, int16_t *out_y);
 // マウスレポート更新（pointing_device_task_user 内で呼ぶ）
 // スムージング、デッドゾーン、加速カーブ、サブピクセル処理を適用
 report_mouse_t analog_stick_update(report_mouse_t mouse_report);
-
-// ADC レンジキャリブレーション（EEPROM 保存あり）
-// 1. analog_stick_calibration_start() でキャリブレーション開始
-// 2. スティックを全方向に最大まで倒す（5〜10 秒）
-// 3. analog_stick_calibration_end() で保存・完了
-void analog_stick_calibration_start(void);
-void analog_stick_calibration_end(void);
-void analog_stick_calibration_reset(void);  // EEPROM を消去しデフォルト値に戻す
-bool analog_stick_is_calibrating(void);     // LED 表示などに使用可能

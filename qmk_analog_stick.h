@@ -90,6 +90,22 @@
 #define JOYSTICK_MAX_SPEED  6000   // 最大速度（8.0）
 #endif
 
+// 速度カーブの指数（傾き量→速度の変化曲線）
+//   1: リニア
+//   2: 二次関数（デフォルト）
+//   3: 三次関数（小さい傾きがより緻密になり、大きく倒すと急激に速くなる）
+#ifndef JOYSTICK_CURVE_POWER
+#define JOYSTICK_CURVE_POWER 2
+#endif
+
+// 倒し始めの移動量の倍率（0〜1000）
+//   1000: 従来どおり
+//    500: 倒し始めの移動量が従来の半分になり、そこから緩やかに増えて
+//         全倒しで従来と同じ最高速に到達する
+#ifndef JOYSTICK_CURVE_LOW_GAIN
+#define JOYSTICK_CURVE_LOW_GAIN 1000
+#endif
+
 // 加速度設定
 // 傾き量の二乗 × この値が毎サイクルの加速度になる
 // 大きいほど速く加速する

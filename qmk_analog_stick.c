@@ -160,8 +160,16 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
         uint32_t adjusted_magnitude = (uint32_t)effective * 1000 / effective_max;
         if (adjusted_magnitude > 1000) adjusted_magnitude = 1000;
 
-        // 現在の傾き量に基づく速度上限（二乗カーブ）
-        int32_t speed_limit = (int32_t)(adjusted_magnitude * adjusted_magnitude / 1000) * JOYSTICK_MAX_SPEED / 1000;
+        // 現在の傾き量に基づく速度上限（JOYSTICK_CURVE_POWER 乗カーブ）
+        int32_t curved = (int32_t)adjusted_magnitude;
+        for (uint8_t p = 1; p < JOYSTICK_CURVE_POWER; p++) {
+            curved = curved * (int32_t)adjusted_magnitude / 1000;
+        }
+        // 倒し始めの移動量を JOYSTICK_CURVE_LOW_GAIN/1000 倍に抑え、
+        // 全倒しで従来と同じ最高速に到達するようブレンドする
+        curved = ((int32_t)JOYSTICK_CURVE_LOW_GAIN * curved +
+                  (1000 - (int32_t)JOYSTICK_CURVE_LOW_GAIN) * (curved * curved / 1000)) / 1000;
+        int32_t speed_limit = curved * JOYSTICK_MAX_SPEED / 1000;
 
         if (current_speed < speed_limit) {
             accel_accum += (int32_t)adjusted_magnitude * adjusted_magnitude * JOYSTICK_ACCEL_RATE;

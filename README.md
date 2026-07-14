@@ -210,7 +210,7 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 2. 各軸を -1000〜+1000 に正規化（非対称レンジ補正）
 3. X/Y の合成ベクトル（magnitude）を計算
 4. 円形デッドゾーン判定
-5. 現在の傾き量から速度上限 (speed_limit) を計算（二乗カーブ）
+5. 現在の傾き量から速度上限 (speed_limit) を計算（`JOYSTICK_CURVE_POWER` 乗カーブ + `JOYSTICK_CURVE_LOW_GAIN` による低速域ブレンド）
 6. `current_speed < speed_limit` なら加速、`current_speed > speed_limit` なら比例減速
 7. 取り付け向き補正を適用（`JOYSTICK_ORIENTATION`）
 8. 合成速度を X/Y 方向比率で分配
@@ -255,7 +255,9 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
      ↓  YES
 デッドゾーン差し引き → adjusted_magnitude (0〜1000)
      ↓
-速度上限: speed_limit = adjusted_magnitude² × MAX_SPEED / 1000000
+カーブ適用: curved = (adjusted_magnitude / 1000)^CURVE_POWER × 1000
+低速域ブレンド: curved = (LOW_GAIN × curved + (1000 - LOW_GAIN) × curved²/1000) / 1000
+速度上限: speed_limit = curved × MAX_SPEED / 1000
      ↓
 current_speed < speed_limit?  → 加速: current_speed += adjusted_magnitude² × ACCEL_RATE / 1000000
 current_speed > speed_limit?  → 減速: current_speed -= (current_speed - speed_limit) × DECEL_RATE / 100
@@ -288,6 +290,22 @@ current_speed > speed_limit?  → 減速: current_speed -= (current_speed - spee
 | 50% | 0.004 | 1500 (1.5 px/cycle) |
 | 70% | 0.00784 | 2940 (2.94 px/cycle) |
 | 100% | 0.016 | 6000 (6.0 px/cycle) |
+
+### 速度カーブの調整
+
+傾き量→速度上限のカーブは 2 つのパラメータで調整できます。
+
+- **`JOYSTICK_CURVE_POWER`**（デフォルト `2`）: カーブの指数。`1` でリニア、`2` で二次関数、`3` で三次関数。大きいほど浅い傾きが緻密になり、深い傾きで急激に速くなる
+- **`JOYSTICK_CURVE_LOW_GAIN`**（デフォルト `1000`）: 倒し始めの移動量の倍率（0〜1000）。`500` にすると倒し始めの速度が従来の半分になり、深く倒すほど緩やかに従来カーブへ近づいて、全倒しでは同じ最高速に到達する
+
+`JOYSTICK_CURVE_LOW_GAIN 500` のときの従来比:
+
+| 傾き | 従来比の速度 |
+|---|---|
+| 倒し始め | 約 50% |
+| 50% | 約 56% |
+| 70% | 約 62% |
+| 100% | 100%（最高速は変わらず） |
 
 ### 減速の仕組み
 
@@ -398,6 +416,8 @@ Joystick SW -----> GPIOピン（内部プルアップ有効）
 | `JOYSTICK_MAX_SPEED` | `6000` | 最大速度 (x1000 スケール、6000 = 6.0 px/cycle) |
 | `JOYSTICK_ACCEL_RATE` | `16` | 加速度係数。大きいほど速く加速する |
 | `JOYSTICK_DECEL_RATE` | `8` | 減速率 (%)。スティックを戻したとき速度上限との差のこの割合ずつ減速する |
+| `JOYSTICK_CURVE_POWER` | `2` | 速度カーブの指数 (`1`: リニア, `2`: 二次, `3`: 三次) |
+| `JOYSTICK_CURVE_LOW_GAIN` | `1000` | 倒し始めの移動量の倍率 (0〜1000)。`500` で倒し始めが半分になる。最高速は変わらない |
 
 **ACCEL_RATE の目安:**
 
@@ -821,7 +841,7 @@ Updated mouse report with `mouse_report.x`, `mouse_report.y`, and (if `JOYSTICK_
 2. Normalize each axis to -1000~+1000 (with asymmetric range correction)
 3. Calculate the combined vector magnitude (X/Y)
 4. Circular deadzone check
-5. Calculate speed limit from current tilt (quadratic curve)
+5. Calculate speed limit from current tilt (`JOYSTICK_CURVE_POWER` curve + low-speed blend via `JOYSTICK_CURVE_LOW_GAIN`)
 6. If `current_speed < speed_limit`: accelerate; if `current_speed > speed_limit`: proportionally decelerate
 7. Apply orientation correction (`JOYSTICK_ORIENTATION`)
 8. Distribute combined speed to X/Y axes by direction ratio
@@ -866,7 +886,9 @@ Circular deadzone check (magnitude > deadzone?)
      ↓  YES
 Subtract deadzone → adjusted_magnitude (0~1000)
      ↓
-Speed limit: speed_limit = adjusted_magnitude² × MAX_SPEED / 1000000
+Apply curve: curved = (adjusted_magnitude / 1000)^CURVE_POWER × 1000
+Low-speed blend: curved = (LOW_GAIN × curved + (1000 - LOW_GAIN) × curved²/1000) / 1000
+Speed limit: speed_limit = curved × MAX_SPEED / 1000
      ↓
 current_speed < speed_limit?  → Accelerate: current_speed += adjusted_magnitude² × ACCEL_RATE / 1000000
 current_speed > speed_limit?  → Decelerate: current_speed -= (current_speed - speed_limit) × DECEL_RATE / 100
@@ -903,6 +925,22 @@ magnitude = √(norm_x² + norm_y²)
 speed_x = current_speed × norm_x / magnitude
 speed_y = current_speed × norm_y / magnitude
 ```
+
+### Speed Curve Tuning
+
+The tilt-to-speed-limit curve can be adjusted with two parameters:
+
+- **`JOYSTICK_CURVE_POWER`** (default `2`): Curve exponent. `1` = linear, `2` = quadratic, `3` = cubic. Higher values give finer control at small tilts and a sharper ramp at large tilts.
+- **`JOYSTICK_CURVE_LOW_GAIN`** (default `1000`): Initial-tilt speed multiplier (0~1000). Setting `500` halves the speed at small tilts; the curve then gradually converges back so full tilt still reaches the same top speed.
+
+Speed relative to default with `JOYSTICK_CURVE_LOW_GAIN 500`:
+
+| Tilt | Relative speed |
+|---|---|
+| Small tilt | ~50% |
+| 50% | ~56% |
+| 70% | ~62% |
+| 100% | 100% (top speed unchanged) |
 
 ---
 
@@ -952,6 +990,8 @@ Individual axis ranges can be overridden after the model define:
 |---|---|---|
 | `JOYSTICK_MAX_SPEED` | `6000` | Maximum speed (x1000 scale; 6000 = 6.0 px/cycle) |
 | `JOYSTICK_ACCEL_RATE` | `16` | Acceleration coefficient — higher values accelerate faster |
+| `JOYSTICK_CURVE_POWER` | `2` | Speed curve exponent (`1`: linear, `2`: quadratic, `3`: cubic) |
+| `JOYSTICK_CURVE_LOW_GAIN` | `1000` | Initial-tilt speed multiplier (0~1000). `500` halves the speed at small tilts while keeping the same top speed at full tilt |
 | `JOYSTICK_DECEL_RATE` | `8` | Deceleration rate (%). Percentage of speed excess shed per cycle when returning the stick |
 
 ### ADC Parameters

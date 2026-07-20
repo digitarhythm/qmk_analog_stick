@@ -19,6 +19,7 @@
 - **起動時自動センタリング**: TMR センサーのウォームアップ待機と中心値の自動取得
 - **非対称レンジ補正**: 中心値が ADC レンジの中央にない場合でも方向ごとに正規化
 - **モデル選択**: `config.h` に `#define JH16` または `#define JS16` を記述するだけで各モデルの ADC レンジを適用
+- **自動レンジ学習**: モデル未定義なら実測値から ADC レンジを自動学習。モデルを問わず同一ファームウェアで動作し、学習結果は EEPROM に自動保存
 - **取り付け向き補正**: `JOYSTICK_ORIENTATION` で 90° 単位の回転補正に対応
 - **スクロールモード対応**: `analog_stick_get_scroll_values()` で加速なしの傾き量を取得可能
 - **ボタン対応**: SW ピンによるマウスクリック（GPIO 直結、オプション）
@@ -86,9 +87,12 @@ keyboards/your_keyboard/
 #define JOYSTICK_X_PIN GP28
 #define JOYSTICK_Y_PIN GP29
 
-// ジョイスティックモデルを選択（いずれか一方を定義）
+// ジョイスティックモデルを選択（省略すると自動レンジ学習モード）
 #define JH16   // X: 8〜1023 / Y: 8〜782
 // #define JS16   // X: 0〜1023 / Y: 0〜1023
+
+// 自動レンジ学習モード + VIA/Vial 環境で学習レンジを保存する場合は必須
+// #define VIA_EEPROM_CUSTOM_CONFIG_SIZE 10
 
 // ボタン機能を使う場合（オプション）
 // #define JOYSTICK_SW_PIN GP13
@@ -183,8 +187,9 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 2. 64 回のサンプリングで X/Y 軸の中心値を自動取得（接続時センタリング）
 3. 移動平均バッファを中心値で初期化
 4. `JOYSTICK_SW_PIN` 定義時、ボタンピンを入力プルアップに設定
-5. `config.h` のモデル定義（JH16/JS16）から ADC レンジを設定
-6. デバッグ有効時、中心値と ADC レンジをコンソール出力
+5. ADC レンジを設定（モデル定義があれば固定値、なければ 中心±`JOYSTICK_INITIAL_RANGE` から自動学習開始）
+6. 自動レンジ学習モードで保存機能有効時、EEPROM の保存済みレンジを読み込んで統合
+7. デバッグ有効時、中心値と ADC レンジをコンソール出力
 
 **注意:** 初期化中はスティックに触れないでください。触れた状態の値が中心値として記録されます。
 
@@ -359,12 +364,13 @@ speed_y = current_speed × norm_y / magnitude
 
 ### Model Selection
 
-`config.h` でいずれか一方を定義してください（両方の定義は不可）。
+`config.h` でモデルを定義すると固定 ADC レンジで動作します。
 
 | Define | X 軸レンジ | Y 軸レンジ | 対象モデル |
 |---|---|---|---|
 | `#define JH16` | 8〜1023 | 8〜782 | K-SILVER JH16 (Hall Effect) |
 | `#define JS16` | 0〜1023 | 0〜1023 | K-SILVER JS16 (TMR) |
+| （未定義） | 自動学習 | 自動学習 | 全モデル対応（自動レンジ学習モード） |
 
 個別の軸のレンジを上書きしたい場合は、`JOYSTICK_ADC_X_MIN` 等を `config.h` で定義してください。
 
@@ -373,6 +379,39 @@ speed_y = current_speed × norm_y / magnitude
 #define JH16
 #define JOYSTICK_ADC_Y_MAX  800   // Y軸最大値だけ変更
 ```
+
+#### 自動レンジ学習モード
+
+モデルを何も定義しない場合、ADC レンジを実測で自動学習します。モデルを問わず同一ファームウェアで動作させたい場合に使用してください。
+
+- 起動時の中心値から `中心±JOYSTICK_INITIAL_RANGE`（デフォルト `250`）の控えめなレンジで開始
+- スティックを倒して実測値がレンジ外に出るたびに、その方向のレンジを自動拡張
+- 数回全倒しすると実機のレンジに収束し、非対称なレンジ（JH16 の Y 軸など）も方向ごとに正しく学習される
+
+**特性:**
+
+- 学習が完了するまでは浅い傾きで最高速に達する（速度が出すぎる方向に誤差が出るだけで、最高速自体は変わらない）
+- 学習結果は EEPROM に自動保存され、次回起動時の初期レンジとして読み込まれる（下記参照）
+
+**学習レンジの不揮発保存:**
+
+VIA/Vial 環境では、学習したレンジがデフォルトで EEPROM に自動保存されます。
+
+- レンジ拡張が止まってから `JOYSTICK_RANGE_SAVE_DELAY_MS`（デフォルト 3 秒）後に 1 回だけ書き込む（フラッシュ摩耗対策）
+- 起動時に保存値を読み込み、初期レンジと統合（広い方を採用）してから学習を再開する
+- 保存先は VIA のカスタム設定領域（10 バイト）。`config.h` に以下の定義が**必須**:
+  ```c
+  #define VIA_EEPROM_CUSTOM_CONFIG_SIZE 10
+  ```
+  この定義によりダイナミックキーマップ領域は 10 バイト後ろへずれて確保されるため、キーマップ領域を侵食することはない（予約が不足している場合はコンパイルエラーで検出される）
+- 広いレンジのスティックから狭いレンジのスティックへ交換した場合は、保存された広いレンジが残って最高速に到達できなくなるため、Vial の EEPROM リセット（または `QK_CLEAR_EEPROM`）で再学習させること
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_INITIAL_RANGE` | `250` | 自動学習の初期半レンジ。実機の最小半レンジより小さい値にすること（大きいと最高速に到達できなくなる） |
+| `JOYSTICK_RANGE_SAVE` | `1`（VIA 有効時） | 学習レンジの EEPROM 保存の有効/無効。VIA 無効環境ではデフォルト `0` |
+| `JOYSTICK_RANGE_SAVE_DELAY_MS` | `3000` | レンジ拡張が止まってから保存するまでの待ち時間（ms） |
+| `JOYSTICK_EEPROM_ADDR` | VIA カスタム設定領域 | 保存先アドレスの手動指定（VIA 無効環境で保存を使う場合に定義） |
 
 ### Button Parameters
 
@@ -473,6 +512,12 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 | `dx` / `dy` | 出力されたマウス移動量 (ピクセル) |
 | `spd` | 現在の速度 (x1000 スケール) |
 
+自動レンジ学習モードで学習レンジが EEPROM に保存されたときは、次の行が出力されます:
+
+```
+AnalogStick range saved: X=8~1023 Y=8~782
+```
+
 デバッグ出力を確認するには:
 - **QMK Toolbox**: 接続するとコンソール出力が表示される
 - **qmk console**: ターミナルで `qmk console` を実行
@@ -522,6 +567,16 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 #define JS16
 ```
 
+### 自動レンジ学習モード（モデルを問わず同一ファームウェアで動作）
+
+```c
+#define JOYSTICK_X_PIN GP28
+#define JOYSTICK_Y_PIN GP29
+// JH16 / JS16 を定義しない → 自動レンジ学習モード
+// 学習レンジの EEPROM 保存用（VIA/Vial 環境で必須）
+#define VIA_EEPROM_CUSTOM_CONFIG_SIZE 10
+```
+
 ---
 
 ## Hardware Notes
@@ -532,6 +587,8 @@ Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 
 - **K-SILVER JS16** (TMR 方式)
 - **K-SILVER JH16** (Hall Effect 方式)
+
+上記以外のアナログ出力ジョイスティックも、自動レンジ学習モードを使えばレンジ設定なしで動作します。ただしデジタル出力（SPI/I2C 等）のモデルには対応していません（例: 静電容量式の K-SILVER JL16 は出力方式が未確認のため、アナログ電圧出力であることを確認してから使用してください）。
 
 ### K-SILVER JS16 / JH16
 
@@ -603,12 +660,15 @@ Switch 2   --> SW         --> GPIO ピン (※)
 ### 方向によって速度が違う
 
 - 使用中のモデルに対応する `#define JH16` または `#define JS16` が `config.h` に定義されているか確認
+- モデル定義を削除して自動レンジ学習モードにすると、実機のレンジを方向ごとに自動学習します（接続後にスティックを数回全倒ししてください）
 - それでも解消しない場合は、`JOYSTICK_ADC_X/Y_MIN/MAX` を実際の ADC 出力レンジに合わせて個別定義してください
 - `JOYSTICK_DEBUG 1` を有効にして起動時のログ（`AnalogStick range:`）と実際の ADC 値を比較してください
 
-### コンパイルエラー: JH16 または JS16 を定義してください
+### 自動レンジ学習モードで接続直後だけ速度が出すぎる
 
-- `config.h` に `#define JH16` または `#define JS16` が記述されているか確認してください
+- 学習が収束するまでの仕様です。接続後にスティックをゆっくり一周（全倒し）させると実機のレンジに収束します
+- 学習結果は EEPROM に保存されるため、発生するのは初回起動時（または EEPROM リセット後）のみです
+- 気になる場合は `#define JH16` / `#define JS16` で固定レンジにしてください
 
 ### 4 方向にしか動かない / 4 方向に引っ張られる
 
@@ -650,6 +710,7 @@ A library for using analog joysticks as mouse cursor controllers in QMK/Vial fir
 - **Startup auto-centering**: TMR sensor warmup delay and automatic center value acquisition at boot
 - **Asymmetric range correction**: Per-direction normalization even when the center output is not at the midpoint of the ADC range
 - **Model selection**: Define `#define JH16` or `#define JS16` in `config.h` to apply the correct ADC range for each model
+- **Adaptive range learning**: With no model defined, the ADC range is learned automatically from actual readings — one firmware works with any model, and the learned range is persisted to EEPROM
 - **Orientation correction**: `JOYSTICK_ORIENTATION` supports 90° rotation correction for non-standard mounting
 - **Scroll mode support**: `analog_stick_get_scroll_values()` returns linear tilt values without acceleration
 - **Button support**: Mouse click via SW pin (direct GPIO connection, optional)
@@ -717,9 +778,12 @@ Define the joystick pins and select the joystick model.
 #define JOYSTICK_X_PIN GP28
 #define JOYSTICK_Y_PIN GP29
 
-// Select one joystick model (required)
+// Select the joystick model (omit both for adaptive range mode)
 #define JH16   // X: 8~1023 / Y: 8~782
 // #define JS16   // X: 0~1023 / Y: 0~1023
+
+// Required to persist the learned range in adaptive range mode (VIA/Vial)
+// #define VIA_EEPROM_CUSTOM_CONFIG_SIZE 10
 
 // Optional: enable button support
 // #define JOYSTICK_SW_PIN GP13
@@ -814,8 +878,9 @@ Initializes the joystick. Call this inside `keyboard_post_init_user()`.
 2. Samples the X/Y axes 64 times to auto-detect center values (startup centering)
 3. Initializes the moving average buffer with the center values
 4. If `JOYSTICK_SW_PIN` is defined, configures the button pin as input with pull-up
-5. Sets the ADC range from the model definition (JH16/JS16) in `config.h`
-6. If debug is enabled, prints center values and ADC range to the console
+5. Sets the ADC range (fixed values if a model is defined; otherwise adaptive learning starts from center ± `JOYSTICK_INITIAL_RANGE`)
+6. In adaptive range mode with persistence enabled, loads and merges the saved range from EEPROM
+7. If debug is enabled, prints center values and ADC range to the console
 
 **Note:** Do not touch the stick during initialization. Any deflection will be recorded as the center value.
 
@@ -957,12 +1022,13 @@ All parameters can be overridden in `config.h` using `#define`.
 
 ### Model Selection
 
-Define one of the following in `config.h` (required, mutually exclusive):
+Defining a model in `config.h` selects fixed ADC ranges:
 
 | Define | X range | Y range | Target model |
 |---|---|---|---|
 | `#define JH16` | 8~1023 | 8~782 | K-SILVER JH16 (Hall Effect) |
 | `#define JS16` | 0~1023 | 0~1023 | K-SILVER JS16 (TMR) |
+| (none) | auto-learned | auto-learned | Any model (adaptive range mode) |
 
 Individual axis ranges can be overridden after the model define:
 
@@ -970,6 +1036,39 @@ Individual axis ranges can be overridden after the model define:
 #define JH16
 #define JOYSTICK_ADC_Y_MAX  800   // override Y max only
 ```
+
+#### Adaptive Range Mode
+
+When no model is defined, the ADC range is learned automatically from actual readings. Use this when a single firmware should work with any joystick model.
+
+- Starts with a conservative range of `center ± JOYSTICK_INITIAL_RANGE` (default `250`) measured at boot
+- Whenever a reading falls outside the current range, the range expands in that direction
+- After a few full tilts, the range converges to the actual hardware range — asymmetric ranges (such as the JH16 Y axis) are learned correctly per direction
+
+**Characteristics:**
+
+- Until learning converges, top speed is reached at a shallower tilt (the error is only toward being faster; top speed itself is unchanged)
+- The learned range is automatically persisted to EEPROM and loaded as the initial range on the next boot (see below)
+
+**Persisting the learned range:**
+
+In VIA/Vial environments, the learned range is saved to EEPROM by default.
+
+- A single write occurs `JOYSTICK_RANGE_SAVE_DELAY_MS` (default 3 s) after range expansion stops (flash wear protection)
+- At boot, the saved values are loaded and merged with the initial range (the wider one wins), then learning continues
+- Storage uses the VIA custom config area (10 bytes). The following define is **required** in `config.h`:
+  ```c
+  #define VIA_EEPROM_CUSTOM_CONFIG_SIZE 10
+  ```
+  This reservation shifts the dynamic keymap area 10 bytes forward, so the keymap area is never encroached (an insufficient reservation is caught as a compile error)
+- When swapping from a wider-range stick to a narrower-range one, the saved wide range would make top speed unreachable — reset the EEPROM (Vial's EEPROM reset or `QK_CLEAR_EEPROM`) to re-learn
+
+| Parameter | Default | Description |
+|---|---|---|
+| `JOYSTICK_INITIAL_RANGE` | `250` | Initial half-range for adaptive mode. Must be smaller than the hardware's smallest half-range (a larger value would make top speed unreachable) |
+| `JOYSTICK_RANGE_SAVE` | `1` (when VIA is enabled) | Enable/disable EEPROM persistence of the learned range. Defaults to `0` without VIA |
+| `JOYSTICK_RANGE_SAVE_DELAY_MS` | `3000` | Delay (ms) after the last range expansion before saving |
+| `JOYSTICK_EEPROM_ADDR` | VIA custom config area | Manual storage address (define this to use persistence without VIA) |
 
 ### Button Parameters
 
@@ -1032,6 +1131,12 @@ AnalogStick range: X=8~1023 Y=8~782
 Xr=450 cx=449 dx=0 | Yr=520 cy=519 dy=0 | spd=0
 ```
 
+When the learned range is saved to EEPROM in adaptive range mode, the following line is printed:
+
+```
+AnalogStick range saved: X=8~1023 Y=8~782
+```
+
 To view debug output:
 - **QMK Toolbox**: Connect the keyboard and console output appears automatically
 - **qmk console**: Run `qmk console` in a terminal
@@ -1081,6 +1186,16 @@ To view debug output:
 #define JS16
 ```
 
+### Adaptive range mode (one firmware for any model)
+
+```c
+#define JOYSTICK_X_PIN GP28
+#define JOYSTICK_Y_PIN GP29
+// No JH16 / JS16 define → adaptive range mode
+// Required to persist the learned range (VIA/Vial environments)
+#define VIA_EEPROM_CUSTOM_CONFIG_SIZE 10
+```
+
 ---
 
 ## Hardware Notes
@@ -1091,6 +1206,8 @@ This library is broadly compatible with any joystick that outputs analog voltage
 
 - **K-SILVER JS16** (TMR sensing)
 - **K-SILVER JH16** (Hall Effect sensing)
+
+Other analog-output joysticks also work without any range configuration when using adaptive range mode. Digital-output models (SPI/I2C etc.) are not supported (e.g., the capacitive K-SILVER JL16 has an unconfirmed output type — verify it outputs analog voltage before use).
 
 ### K-SILVER JS16 / JH16
 
@@ -1158,12 +1275,15 @@ Switch 2   --> SW         --> GPIO pin (※)
 ### Speed differs by direction
 
 - Confirm that the correct model (`#define JH16` or `#define JS16`) is defined in `config.h`
+- Alternatively, remove the model define to use adaptive range mode, which learns the actual per-direction range automatically (tilt the stick fully a few times after connecting)
 - If it persists, override `JOYSTICK_ADC_X/Y_MIN/MAX` with the actual measured ADC range
 - Enable `JOYSTICK_DEBUG 1` and compare the startup log (`AnalogStick range:`) against the actual ADC values at full tilt
 
-### Compile error: define JH16 or JS16
+### Speed is too high right after connecting in adaptive range mode
 
-- Make sure `config.h` contains either `#define JH16` or `#define JS16`
+- This is expected until learning converges. Slowly swirl the stick once at full tilt after connecting
+- Since the learned range is persisted to EEPROM, this only happens on the first boot (or after an EEPROM reset)
+- If this bothers you, use fixed ranges with `#define JH16` / `#define JS16`
 
 ### Cursor only moves in 4 directions / pulled toward 4 directions
 

@@ -133,9 +133,12 @@ static int16_t normalize_axis(uint16_t val, uint16_t center, uint16_t adc_min, u
     int16_t delta = (int16_t)val - (int16_t)center;
     if (delta == 0) return 0;
 
-    int16_t range = (delta > 0)
+    int32_t range = (delta > 0)
         ? (adc_max - center)
         : (center - adc_min);
+    // レンジ端マージン: 端まで物理的に倒しきれない個体や、
+    // 一度きりの深押しで広がった学習レンジでも ±1000 に振り切れるようにする
+    range = range * (100 - JOYSTICK_RANGE_MARGIN) / 100;
     if (range < 1) range = 1;
 
     int32_t scaled = (int32_t)delta * 1000 / range;

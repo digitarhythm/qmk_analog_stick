@@ -119,6 +119,17 @@
 #define JOYSTICK_DEADZONE    30
 #endif
 
+// レンジ端マージン（%、0〜50）
+// ADC レンジの端から手前この割合の位置で正規化値が ±1000（最大傾き）に達する。
+// レンジ端まで物理的に倒しきれない個体や、一度きりの深押し・スパイクで
+// 学習レンジが広がった場合でも、全方向で確実に最高速へ到達できるようにする
+#ifndef JOYSTICK_RANGE_MARGIN
+#define JOYSTICK_RANGE_MARGIN 10
+#endif
+#if JOYSTICK_RANGE_MARGIN < 0 || JOYSTICK_RANGE_MARGIN > 50
+#  error "JOYSTICK_RANGE_MARGIN は 0〜50 の範囲で定義してください"
+#endif
+
 // 速度設定（x1000スケール: 1000 = 1.0ピクセル/サイクル）
 #ifndef JOYSTICK_MAX_SPEED
 #define JOYSTICK_MAX_SPEED  6000   // 最大速度（8.0）

@@ -503,6 +503,7 @@ Joystick SW -----> GPIOピン（内部プルアップ有効）
 |---|---|---|
 | `JOYSTICK_DEADZONE` | `30` | 中心付近のデッドゾーン (ADC 値) |
 | `JOYSTICK_SMOOTHING` | `4` | 移動平均のサンプル数 |
+| `JOYSTICK_RANGE_MARGIN` | `10` | レンジ端マージン (%、0〜50)。レンジ端の手前この割合の位置で最大傾き (±1000) に達する。端まで倒しきれない個体でも全方向で最高速に到達できる |
 
 ### Startup Parameters
 
@@ -680,6 +681,7 @@ Switch 2   --> SW         --> GPIO ピン (※)
 
 - 使用中のモデルに対応する `#define JH16` または `#define JS16` が `config.h` に定義されているか確認
 - モデル定義を削除して自動レンジ学習モードにすると、実機のレンジを方向ごとに自動学習します（接続後にスティックを数回全倒ししてください）
+- 特定方向だけ加速が鈍い場合は、その方向のレンジ端まで通常の全倒しで届いていない可能性があります（一度きりの深押しやスパイクで学習レンジが広がった場合など）。`JOYSTICK_RANGE_MARGIN`（デフォルト 10%）を大きくすると、端まで届かなくても最大傾きに達するようになります
 - それでも解消しない場合は、`JOYSTICK_ADC_X/Y_MIN/MAX` を実際の ADC 出力レンジに合わせて個別定義してください
 - `JOYSTICK_DEBUG 1` を有効にして起動時のログ（`AnalogStick range:`）と実際の ADC 値を比較してください
 
@@ -1147,6 +1149,7 @@ Set automatically by model selection. Override individually if needed.
 | Parameter | Default | Description |
 |---|---|---|
 | `JOYSTICK_DEADZONE` | `30` | Center deadzone radius (ADC units) |
+| `JOYSTICK_RANGE_MARGIN` | `10` | Range-edge margin (%, 0~50). Normalized tilt reaches its maximum (±1000) this fraction before the ADC range edge, so every direction can reach top speed even if the physical stick can't quite reach the learned/configured extremes |
 | `JOYSTICK_SMOOTHING` | `4` | Moving average sample count |
 
 ### Startup Parameters
@@ -1314,6 +1317,7 @@ Switch 2   --> SW         --> GPIO pin (※)
 
 - Confirm that the correct model (`#define JH16` or `#define JS16`) is defined in `config.h`
 - Alternatively, remove the model define to use adaptive range mode, which learns the actual per-direction range automatically (tilt the stick fully a few times after connecting)
+- If only one direction accelerates sluggishly, the stick may not reach that direction's range edge during normal full tilt (e.g., the learned range was widened by a one-time hard press or a spike). Increase `JOYSTICK_RANGE_MARGIN` (default 10%) so maximum tilt is reached before the edge
 - If it persists, override `JOYSTICK_ADC_X/Y_MIN/MAX` with the actual measured ADC range
 - Enable `JOYSTICK_DEBUG 1` and compare the startup log (`AnalogStick range:`) against the actual ADC values at full tilt
 

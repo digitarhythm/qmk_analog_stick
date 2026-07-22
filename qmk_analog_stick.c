@@ -255,6 +255,31 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
         uint32_t adjusted_magnitude = (uint32_t)effective * 1000 / effective_max;
         if (adjusted_magnitude > 1000) adjusted_magnitude = 1000;
 
+#ifdef JOYSTICK_ACCEL_THRESHOLD
+        if (adjusted_magnitude <= JOYSTICK_ACCEL_THRESHOLD) {
+            // 直接ゾーン: 傾き量に比例した速度をそのまま使用（時間加速なし）
+            int32_t target = (int32_t)adjusted_magnitude * JOYSTICK_DIRECT_SPEED / JOYSTICK_ACCEL_THRESHOLD;
+            if (current_speed > target) {
+                // 加速ゾーンから戻ったときは目標速度へ滑らかに減速
+                int32_t decel = (current_speed - target) * JOYSTICK_DECEL_RATE / 100;
+                if (decel < 1) decel = 1;
+                current_speed -= decel;
+                if (current_speed < target) current_speed = target;
+            } else {
+                current_speed = target;
+            }
+            accel_accum = 0;
+        } else {
+            // 加速ゾーン: しきい値超過分（0〜1000 に正規化）の二乗を加速度に変換
+            int32_t excess = (int32_t)(adjusted_magnitude - JOYSTICK_ACCEL_THRESHOLD) * 1000
+                             / (1000 - JOYSTICK_ACCEL_THRESHOLD);
+            accel_accum += excess * excess * JOYSTICK_ACCEL_RATE;
+            current_speed += accel_accum / 1000000;
+            accel_accum %= 1000000;
+            if (current_speed < JOYSTICK_DIRECT_SPEED) current_speed = JOYSTICK_DIRECT_SPEED;
+            if (current_speed > JOYSTICK_MAX_SPEED) current_speed = JOYSTICK_MAX_SPEED;
+        }
+#else
         // 現在の傾き量に基づく速度上限（JOYSTICK_CURVE_POWER 乗カーブ）
         int32_t curved = (int32_t)adjusted_magnitude;
         for (uint8_t p = 1; p < JOYSTICK_CURVE_POWER; p++) {
@@ -278,6 +303,7 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
             if (current_speed < speed_limit) current_speed = speed_limit;
             accel_accum = 0;
         }
+#endif
 
         last_norm_x    = norm_x;
         last_norm_y    = norm_y;

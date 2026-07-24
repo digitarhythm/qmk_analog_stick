@@ -114,6 +114,15 @@
 #define JOYSTICK_ORIENTATION 0
 #endif
 
+// スクロール値の反転（analog_stick_get_scroll_values の出力に適用）
+// 向き補正（JOYSTICK_ORIENTATION）の後に反転される（1: 反転, 0: そのまま）
+#ifndef JOYSTICK_SCROLL_INVERT_V
+#define JOYSTICK_SCROLL_INVERT_V 0   // 縦スクロール
+#endif
+#ifndef JOYSTICK_SCROLL_INVERT_H
+#define JOYSTICK_SCROLL_INVERT_H 1   // 横スクロール
+#endif
+
 // 中心付近の不感帯（ADC値）
 #ifndef JOYSTICK_DEADZONE
 #define JOYSTICK_DEADZONE    30

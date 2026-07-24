@@ -398,6 +398,14 @@ void analog_stick_get_scroll_values(int16_t *out_x, int16_t *out_y) {
 
         *out_x = (int16_t)((int32_t)norm_x * scale / mag);
         *out_y = (int16_t)((int32_t)norm_y * scale / mag);
+
+        // スクロール方向の反転（向き補正の後に適用）
+#if JOYSTICK_SCROLL_INVERT_H
+        *out_x = -*out_x;
+#endif
+#if JOYSTICK_SCROLL_INVERT_V
+        *out_y = -*out_y;
+#endif
     }
 
     // カーソルモードに戻ったとき跳ばないよう加速状態をリセット

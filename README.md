@@ -298,7 +298,7 @@ current_speed > speed_limit?  → 減速: current_speed -= (current_speed - spee
 
 ### 速度カーブの調整
 
-傾き量→速度上限のカーブは 2 つのパラメータで調整できます。
+傾き量→速度上限のカーブは 2 つのパラメータで調整できます。**ハイブリッド速度モードが無効（`JOYSTICK_ACCEL_THRESHOLD 0`）のときのみ有効です。**
 
 - **`JOYSTICK_CURVE_POWER`**（デフォルト `2`）: カーブの指数。`1` でリニア、`2` で二次関数、`3` で三次関数。大きいほど浅い傾きが緻密になり、深い傾きで急激に速くなる
 - **`JOYSTICK_CURVE_LOW_GAIN`**（デフォルト `1000`）: 倒し始めの移動量の倍率（0〜1000）。`500` にすると倒し始めの速度が従来の半分になり、深く倒すほど緩やかに従来カーブへ近づいて、全倒しでは同じ最高速に到達する
@@ -314,11 +314,11 @@ current_speed > speed_limit?  → 減速: current_speed -= (current_speed - spee
 
 ### ハイブリッド速度モード
 
-`config.h` で `JOYSTICK_ACCEL_THRESHOLD` を定義すると、傾き量をしきい値で 2 つのゾーンに分けた速度モデルに切り替わります。
+傾き量をしきい値で 2 つのゾーンに分けた速度モデルです（**デフォルトで有効**）。`config.h` で `JOYSTICK_ACCEL_THRESHOLD 0` を定義すると無効になり、従来のカーブ方式（速度カーブの調整参照）で動作します。
 
 ```c
-#define JOYSTICK_ACCEL_THRESHOLD 800   // しきい値（1〜999、80% = 800）
-#define JOYSTICK_DIRECT_SPEED   2000   // 直接ゾーンの最高速（省略可）
+#define JOYSTICK_ACCEL_THRESHOLD 900   // しきい値（0〜999、デフォルト 900、0 で無効）
+#define JOYSTICK_DIRECT_SPEED    600   // 直接ゾーンの最高速（デフォルト 600）
 ```
 
 - **直接ゾーン（傾き ≦ しきい値）**: 傾き量に比例した速度をそのまま出力する。時間による加速がないため即応答で、倒し始めからしきい値までは緩やかに速度が変化する。しきい値ちょうどの傾きで `JOYSTICK_DIRECT_SPEED` に達する
@@ -474,8 +474,8 @@ Joystick SW -----> GPIOピン（内部プルアップ有効）
 | `JOYSTICK_DECEL_RATE` | `8` | 減速率 (%)。スティックを戻したとき速度上限との差のこの割合ずつ減速する |
 | `JOYSTICK_CURVE_POWER` | `2` | 速度カーブの指数 (`1`: リニア, `2`: 二次, `3`: 三次) |
 | `JOYSTICK_CURVE_LOW_GAIN` | `1000` | 倒し始めの移動量の倍率 (0〜1000)。`500` で倒し始めが半分になる。最高速は変わらない |
-| `JOYSTICK_ACCEL_THRESHOLD` | (未定義) | 定義するとハイブリッド速度モードが有効になる (1〜999)。傾きがこの値以下は比例速度、超えると加速（詳細は Architecture 参照） |
-| `JOYSTICK_DIRECT_SPEED` | `2000` | ハイブリッドモードの直接ゾーン最高速 (x1000 スケール) |
+| `JOYSTICK_ACCEL_THRESHOLD` | `900` | ハイブリッド速度モードのしきい値 (0〜999)。傾きがこの値以下は比例速度、超えると加速。`0` で無効（従来カーブ方式になる。詳細は Architecture 参照） |
+| `JOYSTICK_DIRECT_SPEED` | `600` | ハイブリッドモードの直接ゾーン最高速 (x1000 スケール) |
 
 **ACCEL_RATE の目安:**
 
@@ -1014,7 +1014,7 @@ speed_y = current_speed × norm_y / magnitude
 
 ### Speed Curve Tuning
 
-The tilt-to-speed-limit curve can be adjusted with two parameters:
+The tilt-to-speed-limit curve can be adjusted with two parameters. **These apply only when hybrid speed mode is disabled (`JOYSTICK_ACCEL_THRESHOLD 0`).**
 
 - **`JOYSTICK_CURVE_POWER`** (default `2`): Curve exponent. `1` = linear, `2` = quadratic, `3` = cubic. Higher values give finer control at small tilts and a sharper ramp at large tilts.
 - **`JOYSTICK_CURVE_LOW_GAIN`** (default `1000`): Initial-tilt speed multiplier (0~1000). Setting `500` halves the speed at small tilts; the curve then gradually converges back so full tilt still reaches the same top speed.
@@ -1030,11 +1030,11 @@ Speed relative to default with `JOYSTICK_CURVE_LOW_GAIN 500`:
 
 ### Hybrid Speed Mode
 
-Defining `JOYSTICK_ACCEL_THRESHOLD` in `config.h` switches to a speed model that splits the tilt range into two zones at the threshold.
+A speed model that splits the tilt range into two zones at a threshold (**enabled by default**). Define `JOYSTICK_ACCEL_THRESHOLD 0` in `config.h` to disable it and fall back to the legacy curve model (see Speed Curve Tuning).
 
 ```c
-#define JOYSTICK_ACCEL_THRESHOLD 800   // threshold (1~999; 80% = 800)
-#define JOYSTICK_DIRECT_SPEED   2000   // top speed of the direct zone (optional)
+#define JOYSTICK_ACCEL_THRESHOLD 900   // threshold (0~999; default 900; 0 to disable)
+#define JOYSTICK_DIRECT_SPEED    600   // top speed of the direct zone (default 600)
 ```
 
 - **Direct zone (tilt ≤ threshold)**: Speed is directly proportional to tilt. There is no time-based acceleration, so response is immediate and speed changes gently from initial tilt up to the threshold, reaching `JOYSTICK_DIRECT_SPEED` exactly at the threshold
@@ -1129,8 +1129,8 @@ In VIA/Vial environments, the learned range is saved to EEPROM by default.
 | `JOYSTICK_ACCEL_RATE` | `16` | Acceleration coefficient — higher values accelerate faster |
 | `JOYSTICK_CURVE_POWER` | `2` | Speed curve exponent (`1`: linear, `2`: quadratic, `3`: cubic) |
 | `JOYSTICK_CURVE_LOW_GAIN` | `1000` | Initial-tilt speed multiplier (0~1000). `500` halves the speed at small tilts while keeping the same top speed at full tilt |
-| `JOYSTICK_ACCEL_THRESHOLD` | (undefined) | Defining this enables hybrid speed mode (1~999): proportional speed below the threshold, acceleration above it (see Architecture) |
-| `JOYSTICK_DIRECT_SPEED` | `2000` | Top speed of the direct zone in hybrid mode (x1000 scale) |
+| `JOYSTICK_ACCEL_THRESHOLD` | `900` | Hybrid speed mode threshold (0~999): proportional speed below the threshold, acceleration above it. `0` disables hybrid mode (legacy curve model; see Architecture) |
+| `JOYSTICK_DIRECT_SPEED` | `600` | Top speed of the direct zone in hybrid mode (x1000 scale) |
 | `JOYSTICK_DECEL_RATE` | `8` | Deceleration rate (%). Percentage of speed excess shed per cycle when returning the stick |
 
 ### ADC Parameters

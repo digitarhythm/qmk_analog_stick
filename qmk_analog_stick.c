@@ -258,7 +258,7 @@ report_mouse_t analog_stick_update(report_mouse_t mouse_report) {
         uint32_t adjusted_magnitude = (uint32_t)effective * 1000 / effective_max;
         if (adjusted_magnitude > 1000) adjusted_magnitude = 1000;
 
-#ifdef JOYSTICK_ACCEL_THRESHOLD
+#if JOYSTICK_ACCEL_THRESHOLD > 0
         if (adjusted_magnitude <= JOYSTICK_ACCEL_THRESHOLD) {
             // 直接ゾーン: 傾き量に比例した速度をそのまま使用（時間加速なし）
             int32_t target = (int32_t)adjusted_magnitude * JOYSTICK_DIRECT_SPEED / JOYSTICK_ACCEL_THRESHOLD;

@@ -135,21 +135,22 @@
 #define JOYSTICK_MAX_SPEED  6000   // 最大速度（8.0）
 #endif
 
-// ===== ハイブリッド速度モード（config.h で JOYSTICK_ACCEL_THRESHOLD を定義すると有効） =====
+// ===== ハイブリッド速度モード（デフォルト有効） =====
 // 傾き量がしきい値以下: 傾きに比例した速度をそのまま出力（時間加速なし・即応答）
 //   → 倒し始めからしきい値までは緩やかに速度が変化する
 // 傾き量がしきい値超え: 超過分の二乗に比例した加速度で MAX_SPEED まで加速
 //   → 深く倒し込むと加速して素早く移動できる
 // このモード中は JOYSTICK_CURVE_POWER / JOYSTICK_CURVE_LOW_GAIN は使用されない
-// #define JOYSTICK_ACCEL_THRESHOLD 800   // しきい値（1〜999、80% = 800）
-#ifdef JOYSTICK_ACCEL_THRESHOLD
-#  if JOYSTICK_ACCEL_THRESHOLD < 1 || JOYSTICK_ACCEL_THRESHOLD > 999
-#    error "JOYSTICK_ACCEL_THRESHOLD は 1〜999 の範囲で定義してください"
-#  endif
+// config.h で 0 を定義すると無効になり、従来のカーブ方式で動作する
+#ifndef JOYSTICK_ACCEL_THRESHOLD
+#define JOYSTICK_ACCEL_THRESHOLD 900   // しきい値（0〜999、90% = 900、0 で無効）
+#endif
+#if JOYSTICK_ACCEL_THRESHOLD < 0 || JOYSTICK_ACCEL_THRESHOLD > 999
+#  error "JOYSTICK_ACCEL_THRESHOLD は 0〜999 の範囲で定義してください（0 で無効）"
+#endif
 // 直接ゾーンの最高速（しきい値ちょうどの傾きでの速度、x1000スケール）
-#  ifndef JOYSTICK_DIRECT_SPEED
-#    define JOYSTICK_DIRECT_SPEED 2000
-#  endif
+#ifndef JOYSTICK_DIRECT_SPEED
+#define JOYSTICK_DIRECT_SPEED 600
 #endif
 
 // 速度カーブの指数（傾き量→速度の変化曲線）

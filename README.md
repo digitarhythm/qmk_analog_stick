@@ -133,6 +133,8 @@ SRC += analog.c qmk_analog_stick.c
 #define SCROLL_INTERVAL_MS  8      // スクロール蓄積の更新間隔（ms）
 #define SCROLL_SPEED_DIV    6000   // 大きくすると遅く、小さくすると速い
 #define SCROLL_MAX_SPEED    600    // 最高速度の上限（1〜1000）
+#define SCROLL_INVERT_V     1      // 上下スクロールの反転（1: 反転, 0: そのまま）
+#define SCROLL_INVERT_H     1      // 左右スクロールの反転（1: 反転, 0: そのまま）
 
 static int32_t  scroll_accum_h = 0;
 static int32_t  scroll_accum_v = 0;
@@ -150,8 +152,16 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 
         if (timer_elapsed(scroll_timer) >= SCROLL_INTERVAL_MS) {
             scroll_timer = timer_read();
+#if SCROLL_INVERT_H
+            scroll_accum_h -= stick_x;
+#else
             scroll_accum_h += stick_x;
+#endif
+#if SCROLL_INVERT_V
+            scroll_accum_v -= stick_y;
+#else
             scroll_accum_v += stick_y;
+#endif
         }
 
         mouse_report.x = 0;
@@ -171,6 +181,7 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 ```
 
 - `SCROLL_SPEED_DIV` で全体速度を調整し、`SCROLL_MAX_SPEED` で最高速度を抑制します
+- `SCROLL_INVERT_V` / `SCROLL_INVERT_H` でスクロール方向を上下・左右個別に反転できます（`JOYSTICK_ORIENTATION` の向き補正適用後の方向に対して反転）
 - カーソルモードは `analog_stick_update()` をそのまま使用するため、スロットルの影響を受けません
 
 ---
@@ -845,6 +856,8 @@ Using `analog_stick_get_scroll_values()`, you can obtain linear (non-accelerated
 #define SCROLL_INTERVAL_MS  8      // Accumulation interval (ms)
 #define SCROLL_SPEED_DIV    6000   // Larger = slower, smaller = faster
 #define SCROLL_MAX_SPEED    600    // Maximum scroll speed cap (1~1000)
+#define SCROLL_INVERT_V     1      // Invert vertical scroll (1: inverted, 0: normal)
+#define SCROLL_INVERT_H     1      // Invert horizontal scroll (1: inverted, 0: normal)
 
 static int32_t  scroll_accum_h = 0;
 static int32_t  scroll_accum_v = 0;
@@ -862,8 +875,16 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 
         if (timer_elapsed(scroll_timer) >= SCROLL_INTERVAL_MS) {
             scroll_timer = timer_read();
+#if SCROLL_INVERT_H
+            scroll_accum_h -= stick_x;
+#else
             scroll_accum_h += stick_x;
+#endif
+#if SCROLL_INVERT_V
+            scroll_accum_v -= stick_y;
+#else
             scroll_accum_v += stick_y;
+#endif
         }
 
         mouse_report.x = 0;
@@ -883,6 +904,7 @@ report_mouse_t pointing_device_task_user(report_mouse_t mouse_report) {
 ```
 
 - Use `SCROLL_SPEED_DIV` to set the overall scroll speed, and `SCROLL_MAX_SPEED` to cap the maximum
+- `SCROLL_INVERT_V` / `SCROLL_INVERT_H` invert the scroll direction independently per axis (applied after `JOYSTICK_ORIENTATION` correction)
 - Cursor mode uses `analog_stick_update()` directly with no rate limiting
 
 ---
